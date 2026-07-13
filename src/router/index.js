@@ -3,13 +3,11 @@ import { createRouter, createWebHistory } from 'vue-router'
 // import HomePage from '../pages/HomePage.vue'
 import FavoritePage from '../pages/FavoritePage.vue'
 import HistoryPage from '../pages/HistoryPage.vue'
-import GameDetailPage from '../pages/GameDetailPage.vue'
 
 const routes = [
     { path: '/', redirect: '/favorite' },
     { path: '/favorite', component: FavoritePage },
-    { path: '/history', component: HistoryPage },
-    { path: '/games/:gameId', name: 'game-detail', component: GameDetailPage }
+    { path: '/history', component: HistoryPage }
 ]
 
 const router = createRouter({
