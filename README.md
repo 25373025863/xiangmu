@@ -2,12 +2,13 @@
 
 ## 项目简介
 
-本项目计划开发一个基于 AI API Key 的游戏推荐应用。用户可以输入自己的喜好，例如游戏类型、平台、预算、游玩人数、画风偏好、时长偏好等，系统通过 AI 分析用户需求，并推荐合适的游戏。
+本项目计划开发一个基于 AI API Key 的游戏推荐应用。用户可以手动输入自己的喜好，例如游戏类型、平台、预算、游玩人数、画风偏好、时长偏好等，也可以填写 Steam 个人资料链接或 SteamID，由系统读取公开 Steam 资料并分析用户真实游玩偏好，最后通过 AI 推荐合适的游戏。
 
 核心目标：
 
 - 根据用户偏好生成个性化游戏推荐
 - 支持多维度筛选，例如平台、类型、价格、评分、多人/单人
+- 支持通过 Steam 个人资料导入已拥有游戏、最近游玩记录和游玩时长等偏好信息
 - 使用 AI API 生成推荐理由和对比分析
 - 提供简洁易用的前端界面
 - 支持用户在应用中输入和更换自己的 AI API Key
@@ -41,23 +42,27 @@
 
 ### 2. 成员二：用户偏好输入模块
 
-负责用户填写游戏偏好的完整流程。
+负责用户填写游戏偏好或导入 Steam 个人资料的完整流程。
 
 前端任务：
 
 - 实现偏好输入页面
 - 实现游戏类型、平台、预算、人数等表单控件
+- 增加 Steam 个人资料输入方式，支持 SteamID、SteamID64、个人资料链接或自定义 URL
+- 展示 Steam 资料读取状态，例如读取中、资料不可见、读取成功
 - 完成表单校验和提交按钮状态
 
 后端任务：
 
 - 设计并实现用户偏好提交接口
+- 设计并实现 Steam 资料读取接口，将 Steam 公开资料整理成推荐可用的偏好摘要
 - 校验前端提交的数据是否合法
 - 将用户偏好整理成后续推荐模块可使用的数据格式
 
 交付物：
 
 - 偏好输入页面
+- Steam 资料输入与解析说明
 - 用户偏好提交接口
 - 请求参数说明
 
@@ -213,6 +218,16 @@
 - 希望游戏时长
 - 是否需要中文支持
 
+### Steam 个人资料输入
+
+除了手动填写偏好，用户也可以输入 Steam 个人资料作为推荐依据：
+
+- 支持输入 SteamID、SteamID64、Steam 个人资料链接或自定义 URL
+- 后端读取用户公开 Steam 资料，例如昵称、已拥有游戏、最近游玩游戏、总游玩时长和常玩游戏类型
+- 系统根据 Steam 数据生成偏好摘要，例如偏爱的类型、常玩时长、单机或联机倾向、已玩过的游戏和应避免重复推荐的游戏
+- 如果 Steam 资料为私密、不可访问或读取失败，前端提示原因，并允许用户改为手动填写偏好
+- 不要求用户输入 Steam 密码，也不读取登录 Cookie，只读取公开资料或用户授权后允许访问的数据
+
 ### API Key 设置
 
 用户可以在应用中自行配置 AI API Key：
@@ -240,6 +255,7 @@
 - 游戏标签
 - 可能的缺点
 - 相似游戏推荐
+- 与 Steam 游玩记录的匹配依据
 
 ### 游戏详情页
 
@@ -259,6 +275,7 @@
 - 前端：HTML/CSS/JavaScript 或 React
 - 后端：Node.js/Express 或 Python/FastAPI
 - AI 接口：通过后端调用 AI API
+- Steam 数据：通过后端调用 Steam Web API 或公开资料解析接口，前端不直接保存 Steam API Key
 - 数据存储：JSON 文件、SQLite 或其他轻量数据库
 - 部署：GitHub Pages、Vercel、Render 或其他平台
 
@@ -269,12 +286,14 @@
 整体流程：
 
 1. 用户在前端设置或更换自己的 AI API Key
-2. 用户在前端填写游戏偏好
-3. 前端把用户偏好和脱敏后的 Key 状态提交给后端，真实 Key 通过请求头传递
-4. 后端读取游戏数据并组合 AI prompt
-5. 后端优先使用用户请求头中的 API Key 调用 AI API
-6. 如果用户没有提供 API Key，后端使用 `.env` 中的默认 API Key
-7. 后端把推荐结果返回给前端展示
+2. 用户选择手动填写游戏偏好，或输入 Steam 个人资料链接/SteamID
+3. 如果用户选择 Steam 输入，前端调用后端 Steam 资料读取接口
+4. 后端读取公开 Steam 资料，并提取已拥有游戏、最近游玩、总时长和常玩类型等偏好摘要
+5. 前端把手动偏好或 Steam 偏好摘要，以及脱敏后的 Key 状态提交给后端，真实 Key 通过请求头传递
+6. 后端读取游戏数据并组合 AI prompt
+7. 后端优先使用用户请求头中的 API Key 调用 AI API
+8. 如果用户没有提供 API Key，后端使用 `.env` 中的默认 API Key
+9. 后端把推荐结果返回给前端展示
 
 推荐文件夹目录：
 
@@ -299,7 +318,8 @@ xiangmu/
 │       │   ├── request.js
 │       │   ├── gameApi.js
 │       │   ├── keyApi.js
-│       │   └── recommendApi.js
+│       │   ├── recommendApi.js
+│       │   └── steamApi.js
 │       ├── assets/
 │       ├── components/
 │       │   ├── GameCard.js
@@ -312,6 +332,7 @@ xiangmu/
 │       │   ├── GameDetailPage.js
 │       │   ├── FavoritePage.js
 │       │   ├── SettingsPage.js
+│       │   ├── SteamProfilePage.js
 │       │   └── HelpPage.js
 │       ├── router/
 │       │   └── index.js
@@ -332,12 +353,14 @@ xiangmu/
 │   │   │   ├── gameRoutes.js
 │   │   │   ├── recommendRoutes.js
 │   │   │   ├── keyRoutes.js
+│   │   │   ├── steamRoutes.js
 │   │   │   ├── favoriteRoutes.js
 │   │   │   └── historyRoutes.js
 │   │   ├── controllers/
 │   │   │   ├── gameController.js
 │   │   │   ├── recommendController.js
 │   │   │   ├── keyController.js
+│   │   │   ├── steamController.js
 │   │   │   ├── favoriteController.js
 │   │   │   └── historyController.js
 │   │   ├── services/
@@ -345,6 +368,7 @@ xiangmu/
 │   │   │   ├── gameService.js
 │   │   │   ├── keyService.js
 │   │   │   ├── recommendService.js
+│   │   │   ├── steamService.js
 │   │   │   └── promptService.js
 │   │   ├── data/
 │   │   │   ├── games.json
@@ -358,6 +382,7 @@ xiangmu/
 │   └── tests/
 │       ├── game.test.js
 │       ├── key.test.js
+│       ├── steam.test.js
 │       └── recommend.test.js
 └── scripts/
     └── seed-data.js
@@ -370,11 +395,13 @@ xiangmu/
 - `frontend/src/components/`：可复用组件，例如游戏卡片、导航栏、加载提示。
 - `frontend/src/api/`：统一管理前端请求后端接口的代码。
 - `frontend/src/pages/SettingsPage.js`：用户设置或更换自己的 AI API Key。
+- `frontend/src/api/steamApi.js`：封装 Steam 个人资料读取、校验和偏好摘要请求。
 - `backend/`：后端项目目录，负责接口、业务逻辑、数据处理和 AI API 调用。
 - `backend/src/routes/`：接口路由，只负责定义接口路径。
 - `backend/src/controllers/`：接收请求、调用服务、返回响应。
 - `backend/src/services/`：核心业务逻辑，例如 AI 推荐、游戏查询、prompt 生成。
 - `backend/src/services/keyService.js`：检查用户传入的 API Key 是否存在、格式是否合理，但不能保存真实 Key。
+- `backend/src/services/steamService.js`：读取 Steam 公开资料，并转换成推荐模块可使用的偏好摘要。
 - `backend/src/data/`：临时存放游戏数据、收藏数据和历史记录数据。
 - `backend/src/config/`：读取环境变量，例如 AI API Key。
 - `docs/`：项目文档，例如接口文档、数据结构说明、测试计划。
@@ -387,7 +414,8 @@ xiangmu/
 | 游戏列表 | GET | `/api/games` | 获取游戏数据 |
 | 游戏详情 | GET | `/api/games/:id` | 获取单个游戏详情 |
 | Key 检查 | POST | `/api/key/check` | 检查用户 API Key 是否可用，不返回真实 Key |
-| AI 推荐 | POST | `/api/recommend` | 根据用户偏好生成推荐，支持请求头 `x-ai-api-key` |
+| Steam 资料解析 | POST | `/api/steam/profile` | 根据 SteamID 或个人资料链接读取公开资料并生成偏好摘要 |
+| AI 推荐 | POST | `/api/recommend` | 根据手动偏好或 Steam 偏好摘要生成推荐，支持请求头 `x-ai-api-key` |
 | 收藏游戏 | POST | `/api/favorites` | 收藏某个游戏 |
 | 收藏列表 | GET | `/api/favorites` | 获取收藏记录 |
 | 历史记录 | GET | `/api/histories` | 获取推荐历史 |
@@ -398,7 +426,7 @@ xiangmu/
 | 成员 | 负责模块 | 主要前端目录 | 主要后端目录 |
 | --- | --- | --- | --- |
 | 成员一 | 首页与项目整体协调 | `frontend/src/pages/HomePage.js` | `backend/src/app.js`、`backend/src/routes/healthRoutes.js` |
-| 成员二 | 用户偏好输入 | `frontend/src/pages/PreferencePage.js` | `backend/src/controllers/recommendController.js` |
+| 成员二 | 用户偏好输入与 Steam 资料导入 | `frontend/src/pages/PreferencePage.js`、`frontend/src/pages/SteamProfilePage.js`、`frontend/src/api/steamApi.js` | `backend/src/controllers/recommendController.js`、`backend/src/controllers/steamController.js`、`backend/src/services/steamService.js` |
 | 成员三 | 游戏数据 | `frontend/src/pages/GameDetailPage.js` | `backend/src/data/games.json`、`backend/src/services/gameService.js` |
 | 成员四 | AI 推荐与 API Key 设置 | `frontend/src/pages/SettingsPage.js`、`frontend/src/api/keyApi.js`、`frontend/src/api/recommendApi.js` | `backend/src/services/aiService.js`、`backend/src/services/keyService.js`、`backend/src/services/promptService.js` |
 | 成员五 | 推荐结果展示 | `frontend/src/pages/RecommendPage.js` | `backend/src/services/recommendService.js` |
@@ -441,7 +469,19 @@ x-ai-api-key: user_api_key_here
 ```env
 DEFAULT_AI_API_KEY=your_default_api_key_here
 ALLOW_USER_API_KEY=true
+STEAM_API_KEY=your_steam_web_api_key_here
 ```
+
+## Steam 资料读取规范
+
+本项目支持把 Steam 个人资料作为推荐输入来源：
+
+1. 前端只接收 SteamID、SteamID64、个人资料链接或自定义 URL，不接收 Steam 密码
+2. Steam API Key 只能放在后端 `.env` 文件中，不能写入前端代码或提交到 GitHub
+3. 后端只读取推荐所需的公开资料，例如已拥有游戏、最近游玩、游玩时长和基础昵称头像
+4. 如果用户 Steam 资料不可公开访问，接口返回明确错误信息，前端引导用户改为手动填写偏好
+5. 推荐 prompt 中应标明 Steam 数据来源，并提醒 AI 避免重复推荐用户已经大量玩过的游戏
+6. 历史记录中只保存推荐结果和必要的偏好摘要，不保存完整 Steam 原始资料
 
 ## 项目协作流程
 
@@ -462,6 +502,7 @@ ALLOW_USER_API_KEY=true
 - 搭建前端和后端基础项目
 - 准备一份基础游戏数据
 - 跑通一次 AI 推荐接口
+- 跑通一次 Steam 资料读取接口，并完成手动偏好输入的回退流程
 
 第二周建议完成：
 
@@ -476,6 +517,7 @@ ALLOW_USER_API_KEY=true
 展示时可以重点说明：
 
 - 用户如何输入游戏偏好
+- 用户如何通过 Steam 个人资料快速生成游戏偏好
 - AI 如何根据偏好生成推荐
 - 推荐结果为什么适合用户
 - 项目如何保护 API Key
