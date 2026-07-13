@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GAME//PULSE - 偏好档案</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: '#080b14',
+            panel: '#111827',
+            neon: '#22d3ee',
+            pulse: '#f43f9a',
+          },
+          boxShadow: {
+            neon: '0 0 18px rgba(34, 211, 238, .28)',
+            pulse: '0 0 20px rgba(244, 63, 154, .25)',
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    body { background-color: #080b14; }
+    .scanlines { background-image: linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px); background-size: 100% 4px; }
+    .choice input { position: absolute; opacity: 0; pointer-events: none; }
+    .choice span { display: flex; align-items: center; justify-content: center; min-height: 42px; border: 1px solid rgb(71 85 105); background: rgba(15, 23, 42, .72); color: rgb(203 213 225); transition: all .18s ease; cursor: pointer; user-select: none; }
+    .choice:hover span { border-color: rgba(34, 211, 238, .7); color: #fff; }
+    .choice input:checked + span { border-color: #22d3ee; background: rgba(8, 145, 178, .2); box-shadow: 0 0 14px rgba(34, 211, 238, .2); color: #ecfeff; }
+    .choice.pink input:checked + span { border-color: #f43f9a; background: rgba(190, 24, 93, .18); box-shadow: 0 0 14px rgba(244, 63, 154, .2); }
+    .toggle input { position: absolute; opacity: 0; }
+    .toggle-track { width: 48px; height: 26px; border: 1px solid #475569; background: #1e293b; transition: .2s ease; }
+    .toggle-dot { width: 18px; height: 18px; transform: translateX(3px); transition: .2s ease; }
+    .toggle input:checked + .toggle-track { border-color: #f43f9a; background: #831843; }
+    .toggle input:checked + .toggle-track .toggle-dot { transform: translateX(25px); background: #fce7f3; }
+    @keyframes blink { 50% { opacity: .3; } }
+    .status-dot { animation: blink 1.2s infinite; }
+  </style>
+</head>
+<body class="min-h-screen text-slate-100 selection:bg-cyan-400 selection:text-slate-950">
+  <div class="scanlines min-h-screen">
+    <main class="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
+      <header class="mb-8 border-b border-cyan-400/30 pb-6 sm:mb-10">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p class="mb-2 font-mono text-xs tracking-[.22em] text-cyan-300">AI GAME RECOMMENDATION SYSTEM</p>
+            <h1 class="text-3xl font-black tracking-wide text-white sm:text-4xl">GAME<span class="text-cyan-400">//</span>PULSE</h1>
+          </div>
+          <div class="flex items-center gap-2 rounded border border-emerald-400/40 bg-emerald-400/10 px-3 py-2 font-mono text-xs text-emerald-300">
+            <span class="status-dot h-2 w-2 rounded-full bg-emerald-400"></span> SYSTEM ONLINE
+          </div>
+        </div>
+        <p class="mt-5 max-w-2xl text-sm leading-6 text-slate-400">建立你的玩家偏好档案，让推荐引擎锁定下一款值得投入的游戏。</p>
+      </header>
+
+      <form id="preferenceForm" class="space-y-7" novalidate>
+        <section>
+          <div class="mb-3 flex items-baseline gap-3">
+            <h2 class="font-bold text-white">游戏平台</h2><span class="font-mono text-xs text-pink-400">REQUIRED / MULTI</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <label class="choice"><input type="checkbox" name="platforms" value="PC"><span>PC</span></label>
+            <label class="choice"><input type="checkbox" name="platforms" value="Switch"><span>Switch</span></label>
+            <label class="choice"><input type="checkbox" name="platforms" value="PS5"><span>PS5</span></label>
+            <label class="choice"><input type="checkbox" name="platforms" value="Xbox"><span>Xbox</span></label>
+            <label class="choice"><input type="checkbox" name="platforms" value="手机"><span>手机</span></label>
+          </div>
+        </section>
+
+        <section>
+          <div class="mb-3 flex items-baseline gap-3">
+            <h2 class="font-bold text-white">游戏类型</h2><span class="font-mono text-xs text-pink-400">REQUIRED / MULTI</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+            <label class="choice pink"><input type="checkbox" name="game_types" value="动作"><span>动作</span></label>
+            <label class="choice pink"><input type="checkbox" name="game_types" value="RPG"><span>RPG</span></label>
+            <label class="choice pink"><input type="checkbox" name="game_types" value="射击"><span>射击</span></label>
+            <label class="choice pink"><input type="checkbox" name="game_types" value="策略"><span>策略</span></label>
+            <label class="choice pink"><input type="checkbox" name="game_types" value="模拟经营"><span>模拟经营</span></label>
+            <label class="choice pink"><input type="checkbox" name="game_types" value="休闲"><span>休闲</span></label>
+            <label class="choice pink"><input type="checkbox" name="game_types" value="独立游戏"><span>独立游戏</span></label>
+          </div>
+        </section>
+
+        <div class="grid gap-7 md:grid-cols-2">
+          <section>
+            <h2 class="mb-3 font-bold text-white">游玩人数</h2>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="choice"><input type="radio" name="player_mode" value="单人" checked><span>单人</span></label>
+              <label class="choice"><input type="radio" name="player_mode" value="本地多人"><span>本地多人</span></label>
+              <label class="choice"><input type="radio" name="player_mode" value="在线多人"><span>在线多人</span></label>
+              <label class="choice"><input type="radio" name="player_mode" value="MMO"><span>MMO</span></label>
+            </div>
+          </section>
+          <section>
+            <h2 class="mb-3 font-bold text-white">画风偏好 <span class="ml-2 font-mono text-xs font-normal text-slate-500">OPTIONAL / MULTI</span></h2>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="choice"><input type="checkbox" name="art_styles" value="写实"><span>写实</span></label>
+              <label class="choice"><input type="checkbox" name="art_styles" value="像素"><span>像素</span></label>
+              <label class="choice"><input type="checkbox" name="art_styles" value="二次元"><span>二次元</span></label>
+              <label class="choice"><input type="checkbox" name="art_styles" value="卡通渲染"><span>卡通渲染</span></label>
+            </div>
+          </section>
+          <section>
+            <h2 class="mb-3 font-bold text-white">时长偏好</h2>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="choice"><input type="radio" name="duration_preference" value="短平快(&lt;10h)"><span>短平快(&lt;10h)</span></label>
+              <label class="choice"><input type="radio" name="duration_preference" value="适中(10-30h)" checked><span>适中(10-30h)</span></label>
+              <label class="choice"><input type="radio" name="duration_preference" value="杀时间(30h+)"><span>杀时间(30h+)</span></label>
+              <label class="choice"><input type="radio" name="duration_preference" value="无限游玩"><span>无限游玩</span></label>
+            </div>
+          </section>
+          <section>
+            <h2 class="mb-3 font-bold text-white">预算范围</h2>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="choice"><input type="radio" name="budget" value="免费"><span>免费</span></label>
+              <label class="choice"><input type="radio" name="budget" value="100元内" checked><span>100元内</span></label>
+              <label class="choice"><input type="radio" name="budget" value="100-300元"><span>100-300元</span></label>
+              <label class="choice"><input type="radio" name="budget" value="300元以上"><span>300元以上</span></label>
+            </div>
+          </section>
+        </div>
+
+        <section class="border-y border-slate-700/70 py-5">
+          <label class="toggle flex cursor-pointer items-center justify-between gap-4">
+            <span><span class="block font-bold text-white">必须支持中文</span><span class="mt-1 block text-sm text-slate-500">仅匹配提供简体或繁体中文的游戏</span></span>
+            <input id="chineseRequired" type="checkbox">
+            <span class="toggle-track rounded-full p-[3px]"><span class="toggle-dot block rounded-full bg-slate-300"></span></span>
+          </label>
+        </section>
+
+        <section>
+          <label for="notes" class="mb-3 block font-bold text-white">补充说明 <span class="ml-2 font-mono text-xs font-normal text-slate-500">OPTIONAL</span></label>
+          <textarea id="notes" rows="4" maxlength="1000" placeholder="例如：最近想找适合和朋友一起玩的合作游戏..." class="w-full resize-y border border-slate-600 bg-slate-900/70 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"></textarea>
+        </section>
+
+        <div class="flex flex-wrap items-center gap-4">
+          <button id="submitButton" type="submit" class="min-w-48 border border-cyan-300 bg-cyan-400 px-6 py-3 font-bold text-slate-950 transition hover:bg-cyan-300 hover:shadow-neon disabled:cursor-not-allowed disabled:opacity-60">
+            <span id="buttonText">生成推荐</span>
+          </button>
+          <p id="formMessage" class="min-h-5 text-sm text-slate-400" aria-live="polite"></p>
+        </div>
+      </form>
+
+      <section class="mt-10 border border-slate-700 bg-slate-950/65">
+        <div class="flex items-center gap-2 border-b border-slate-700 px-4 py-3 font-mono text-xs text-slate-400"><span class="h-2 w-2 rounded-full bg-pink-400"></span> API RESPONSE</div>
+        <pre id="result" class="min-h-28 overflow-x-auto p-4 text-sm leading-6 text-cyan-200">等待提交偏好数据...</pre>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const form = document.getElementById('preferenceForm');
+    const submitButton = document.getElementById('submitButton');
+    const buttonText = document.getElementById('buttonText');
+    const formMessage = document.getElementById('formMessage');
+    const result = document.getElementById('result');
+
+    function selectedValues(name) {
+      return [...document.querySelectorAll(`input[name="${name}"]:checked`)].map((input) => input.value);
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      const platforms = selectedValues('platforms');
+      const gameTypes = selectedValues('game_types');
+      if (!platforms.length || !gameTypes.length) {
+        formMessage.textContent = '请至少选择一个游戏平台和一种游戏类型。';
+        formMessage.className = 'min-h-5 text-sm text-pink-400';
+        return;
+      }
+
+      const payload = {
+        platforms,
+        game_types: gameTypes,
+        player_mode: document.querySelector('input[name="player_mode"]:checked').value,
+        art_styles: selectedValues('art_styles'),
+        duration_preference: document.querySelector('input[name="duration_preference"]:checked').value,
+        budget: document.querySelector('input[name="budget"]:checked').value,
+        chinese_required: document.getElementById('chineseRequired').checked,
+        notes: document.getElementById('notes').value.trim() || null,
+      };
+
+      submitButton.disabled = true;
+      buttonText.textContent = '正在连接推荐引擎...';
+      formMessage.textContent = '正在提交偏好数据';
+      formMessage.className = 'min-h-5 text-sm text-cyan-300';
+      result.textContent = 'Loading...';
+
+      try {
+        const response = await fetch('/api/preferences/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        result.textContent = JSON.stringify(data, null, 2);
+
+        if (!response.ok) {
+          throw new Error(data.detail ? JSON.stringify(data.detail) : '请求失败');
+        }
+        formMessage.textContent = '偏好已接收，推荐任务已启动。';
+        formMessage.className = 'min-h-5 text-sm text-emerald-300';
+      } catch (error) {
+        result.textContent = JSON.stringify({ error: error.message }, null, 2);
+        formMessage.textContent = '无法连接后端，请确认服务已在 localhost:8000 启动。';
+        formMessage.className = 'min-h-5 text-sm text-pink-400';
+      } finally {
+        submitButton.disabled = false;
+        buttonText.textContent = '生成推荐';
+      }
+    });
+  </script>
+</body>
+</html>
