@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>游戏数据总览</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 1040px; background: #f3f6f8; color: #263238; font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; }
+    .header { display: flex; min-height: 118px; align-items: center; justify-content: space-between; padding: 24px 46px; background: #16213e; color: #fff; }
+    .eyebrow { color: #f4a261; font-size: 13px; font-weight: 700; letter-spacing: 1px; }
+    h1 { margin: 5px 0 0; font-size: 27px; letter-spacing: 0; }
+    .header p { margin: 5px 0 0; color: #b9c8da; font-size: 13px; }
+    .legend-note { display: flex; gap: 18px; color: #d9e3ed; font-size: 13px; }
+    .dot { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 50%; }
+    main { max-width: 1480px; margin: 0 auto; padding: 26px 34px 36px; }
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+    .metric { min-height: 92px; padding: 17px 20px; border: 1px solid #dce5ea; background: #fff; }
+    .metric .value { color: #16213e; font-size: 25px; font-weight: 700; }
+    .metric .label { margin-top: 5px; color: #6b7785; font-size: 13px; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(380px, .9fr); gap: 18px; margin-bottom: 18px; }
+    .panel { border: 1px solid #dce5ea; background: #fff; }
+    .panel-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 19px 20px 13px; }
+    h2 { margin: 0; color: #16213e; font-size: 16px; }
+    .panel-head p { margin: 5px 0 0; color: #6b7785; font-size: 12px; }
+    .reset { border: 1px solid #cbd6de; background: #fff; color: #34495e; padding: 6px 10px; cursor: pointer; font-family: inherit; font-size: 12px; }
+    .reset:hover { border-color: #2a9d8f; color: #087779; }
+    .filter-bar { display: grid; grid-template-columns: minmax(180px, 1.6fr) repeat(3, minmax(110px, 1fr)) auto auto; gap: 8px; padding: 0 20px 14px; }
+    .filter-bar input, .filter-bar select { min-width: 0; height: 34px; border: 1px solid #cbd6de; background: #fff; color: #34495e; padding: 0 9px; font: 13px inherit; }
+    .filter-bar button { height: 34px; border: 0; padding: 0 13px; cursor: pointer; font-family: inherit; font-size: 13px; }
+    .filter-bar .search-button { background: #0f8b8d; color: #fff; }
+    .filter-bar .clear-button { background: #eaf0f3; color: #34495e; }
+    .table-wrap { max-height: 350px; overflow: auto; border-top: 1px solid #e8eef2; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { position: sticky; top: 0; z-index: 1; padding: 11px 14px; background: #eaf0f3; color: #425466; font-weight: 600; text-align: left; }
+    td { padding: 11px 14px; border-top: 1px solid #edf1f4; color: #34495e; }
+    tbody tr { cursor: pointer; transition: background .15s ease; }
+    tbody tr:hover { background: #f0f8f7; }
+    tbody tr.selected { background: #dff3f1; }
+    .rating { color: #d94841; font-weight: 700; }
+    .detail-body { min-height: 350px; padding: 5px 20px 20px; }
+    .empty { display: grid; min-height: 300px; place-items: center; color: #6b7785; font-size: 14px; text-align: center; }
+    .detail-title { margin: 2px 0 7px; color: #16213e; font-size: 24px; }
+    .detail-meta { color: #087779; font-size: 14px; font-weight: 700; }
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; margin: 18px 0; }
+    .chip { padding: 4px 8px; background: #e5f3f2; color: #087779; font-size: 12px; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px 18px; margin: 16px 0; }
+    .detail-item span { display: block; color: #778592; font-size: 12px; }
+    .detail-item strong { display: block; margin-top: 3px; color: #34495e; font-size: 13px; font-weight: 600; }
+    .description { margin: 14px 0 0; padding-top: 14px; border-top: 1px solid #e8eef2; color: #4c5b66; font-size: 13px; line-height: 1.7; }
+    .chart-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(300px, .55fr); gap: 18px; }
+    .chart-panel { min-height: 490px; }
+    .chart { width: 100%; height: 400px; }
+    .ring-panel { min-height: 430px; }
+    .ring-chart { height: 330px; }
+    .chart-tip { padding: 0 20px 4px; color: #6b7785; font-size: 12px; }
+    @media (max-width: 1180px) { .summary { grid-template-columns: repeat(2, 1fr); } .workspace, .chart-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div>
+      <div class="eyebrow">游戏库数据分析</div>
+      <h1>游戏数据总览</h1>
+      <p>在同一页面查看游戏详情与图表；点击游戏可切换为该游戏的玩家评分系统。</p>
+    </div>
+    <div class="legend-note">
+      <span><i class="dot" style="background:#e65045"></i>好评</span>
+      <span><i class="dot" style="background:#3a86ff"></i>中等</span>
+      <span><i class="dot" style="background:#9ca3af"></i>差评</span>
+    </div>
+  </header>
+  <main>
+    <section class="summary">
+      <div class="metric"><div id="total" class="value">0</div><div class="label">当前结果</div></div>
+      <div class="metric"><div id="pcTotal" class="value">0</div><div class="label">电脑端结果</div></div>
+      <div class="metric"><div id="average" class="value">0.0</div><div class="label">平均评分</div></div>
+      <div class="metric"><div id="topGenre" class="value">-</div><div class="label">热门类型</div></div>
+    </section>
+
+    <section class="workspace">
+      <article class="panel">
+        <div class="panel-head">
+          <div><h2>游戏数据列表</h2><p>点击任意游戏行，查看详细数据与独立评分系统。</p></div>
+          <button id="resetOverview" class="reset" type="button">恢复总体</button>
+        </div>
+        <form id="filterForm" class="filter-bar">
+          <input id="keywordFilter" type="search" placeholder="搜索名称、标签或简介">
+          <select id="genreFilter" aria-label="游戏类型"></select>
+          <select id="platformFilter" aria-label="游戏平台"></select>
+          <select id="tagFilter" aria-label="游戏标签"></select>
+          <button class="search-button" type="submit">查询</button>
+          <button id="clearFilters" class="clear-button" type="button">重置</button>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>游戏名称</th><th>类型</th><th>平台</th><th>评分</th><th>价格</th></tr></thead>
+            <tbody id="gamesBody"></tbody>
+          </table>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="panel-head"><div><h2>运行结果数据详情</h2><p id="detailSubtitle">未选择游戏</p></div></div>
+        <div id="detailBody" class="detail-body"></div>
+      </article>
+    </section>
+
+    <section class="chart-grid">
+      <article class="panel chart-panel">
+        <div class="panel-head"><div><h2>推荐游戏指标对比</h2><p>点击折线上的数据点，也可以切换右侧评分系统。</p></div></div>
+        <div class="chart-tip">评分指数、价格指数、平台覆盖和标签丰富度均按 0-100 标准化展示。</div>
+        <div id="lineChart" class="chart"></div>
+      </article>
+      <article class="panel chart-panel ring-panel">
+        <div class="panel-head"><div><h2 id="ratingTitle">总体评价指数分布</h2><p id="ratingSubtitle">按全部游戏的综合评分统计</p></div></div>
+        <div id="ratingChart" class="chart ring-chart"></div>
+      </article>
+    </section>
+  </main>
+  <script>
+    let games = [];
+
+    function populateSelect(element, values, defaultLabel, selectedValue) {
+      element.innerHTML = `<option value="">${defaultLabel}</option>${values.map(value => `<option value="${value}">${value}</option>`).join('')}`;
+      element.value = selectedValue || '';
+    }
+
+    function setupFilters(allGames, query) {
+      const genres = [...new Set(allGames.map(game => game.genre))].sort();
+      const platforms = [...new Set(allGames.flatMap(game => game.platforms))].sort();
+      const tags = [...new Set(allGames.flatMap(game => game.tags))].sort();
+      document.querySelector('#keywordFilter').value = query.get('keyword') || '';
+      populateSelect(document.querySelector('#genreFilter'), genres, '全部类型', query.get('genre'));
+      populateSelect(document.querySelector('#platformFilter'), platforms, '全部平台', query.get('platform'));
+      populateSelect(document.querySelector('#tagFilter'), tags, '全部标签', query.get('tag'));
+
+      document.querySelector('#filterForm').addEventListener('submit', event => {
+        event.preventDefault();
+        const nextQuery = new URLSearchParams();
+        ['keyword', 'genre', 'platform', 'tag'].forEach(name => {
+          const value = document.querySelector(`#${name}Filter`).value.trim();
+          if (value) nextQuery.set(name, value);
+        });
+        window.location.search = nextQuery.toString();
+      });
+      document.querySelector('#clearFilters').addEventListener('click', () => {
+        window.location.href = window.location.pathname;
+      });
+    }
+
+    async function initializeDashboard() {
+      const query = new URLSearchParams(window.location.search);
+      const queryText = query.toString();
+      const response = await fetch(`/api/games${queryText ? `?${queryText}` : ''}`);
+      if (!response.ok) throw new Error('游戏数据请求失败');
+      const payload = await response.json();
+      games = payload.data.items;
+      const allGamesResponse = await fetch('/api/games');
+      if (!allGamesResponse.ok) throw new Error('筛选条件请求失败');
+      const allGamesPayload = await allGamesResponse.json();
+      setupFilters(allGamesPayload.data.items, query);
+      if (!games.length) {
+        document.querySelector('#total').textContent = '0';
+        document.querySelector('#pcTotal').textContent = '0';
+        document.querySelector('#average').textContent = '-';
+        document.querySelector('#topGenre').textContent = '-';
+        document.querySelector('#gamesBody').innerHTML = '<tr><td colspan="5">没有符合当前筛选条件的游戏。</td></tr>';
+        document.querySelector('#detailSubtitle').textContent = '没有筛选结果';
+        document.querySelector('#detailBody').innerHTML = '<div class="empty">请调整搜索条件后重新查询。</div>';
+        return;
+      }
+    const palette = { good: '#e65045', medium: '#3a86ff', poor: '#9ca3af' };
+    const ratingLabels = { good: '好评', medium: '中等', poor: '差评' };
+    const maxPrice = Math.max(...games.map(game => game.price), 1);
+    const maxPlatforms = Math.max(...games.map(game => game.platforms.length), 1);
+    const maxTags = Math.max(...games.map(game => game.tags.length), 1);
+    const totalRating = games.reduce((sum, game) => sum + game.rating, 0);
+    let selectedGame = null;
+
+    const genres = games.reduce((counts, game) => {
+      counts[game.genre] = (counts[game.genre] || 0) + 1;
+      return counts;
+    }, {});
+    const topGenre = Object.entries(genres).sort((left, right) => right[1] - left[1])[0]?.[0] || '-';
+    document.querySelector('#total').textContent = games.length;
+    document.querySelector('#pcTotal').textContent = games.filter(game => game.platforms.includes('电脑')).length;
+    document.querySelector('#average').textContent = (totalRating / games.length).toFixed(1);
+    document.querySelector('#topGenre').textContent = topGenre;
+
+    const overallGroups = games.reduce((groups, game) => {
+      if (game.rating >= 9) groups.good += 1;
+      else if (game.rating >= 8) groups.medium += 1;
+      else groups.poor += 1;
+      return groups;
+    }, { good: 0, medium: 0, poor: 0 });
+
+    function priceText(price) { return price === 0 ? '免费' : `¥${price}`; }
+    function renderTable() {
+      document.querySelector('#gamesBody').innerHTML = games.map(game => `
+        <tr data-id="${game.id}" class="${selectedGame?.id === game.id ? 'selected' : ''}">
+          <td>${game.name}</td><td>${game.genre}</td><td>${game.platforms.join(' / ')}</td>
+          <td class="rating">${game.rating.toFixed(1)}</td><td>${priceText(game.price)}</td>
+        </tr>
+      `).join('');
+    }
+
+    function renderDetail() {
+      const body = document.querySelector('#detailBody');
+      const subtitle = document.querySelector('#detailSubtitle');
+      if (!selectedGame) {
+        subtitle.textContent = '当前显示总体评价情况';
+        body.innerHTML = '<div class="empty">点击左侧游戏列表或下方折线图的数据点<br>即可查看该游戏的数据详情和玩家评价百分比。</div>';
+        return;
+      }
+      subtitle.textContent = '已选择：' + selectedGame.name;
+      body.innerHTML = `
+        <h3 class="detail-title">${selectedGame.name}</h3>
+        <div class="detail-meta">${selectedGame.genre}　|　${priceText(selectedGame.price)}　|　评分 ${selectedGame.rating.toFixed(1)}</div>
+        <div class="chips">${selectedGame.tags.map(tag => `<span class="chip">${tag}</span>`).join('')}</div>
+        <div class="detail-grid">
+          <div class="detail-item"><span>游戏平台</span><strong>${selectedGame.platforms.join(' / ')}</strong></div>
+          <div class="detail-item"><span>开发商</span><strong>${selectedGame.developer}</strong></div>
+          <div class="detail-item"><span>发售日期</span><strong>${selectedGame.release_date}</strong></div>
+          <div class="detail-item"><span>好评率</span><strong>${selectedGame.review_distribution.good}%</strong></div>
+        </div>
+        <p class="description">${selectedGame.description}</p>
+      `;
+    }
+
+    const lineChart = echarts.init(document.querySelector('#lineChart'));
+    lineChart.setOption({
+      color: ['#e65045', '#2a9d8f', '#3a86ff', '#f4a261'],
+      tooltip: {
+        trigger: 'axis', axisPointer: { type: 'cross' },
+        formatter: params => {
+          const game = games[params[0].dataIndex];
+          const lines = params.map(item => `${item.marker}${item.seriesName}：${item.value}`).join('<br>');
+          return `<b>${game.name}</b><br>原始评分：${game.rating}<br>原始价格：${priceText(game.price)}<br>支持平台：${game.platforms.length} 个<br>${lines}`;
+        }
+      },
+      legend: { top: 4, data: ['评分指数', '价格指数', '平台覆盖', '标签丰富度'] },
+      grid: { left: 52, right: 24, top: 56, bottom: 95 },
+      xAxis: { type: 'category', data: games.map(game => game.name), axisLabel: { interval: 0, rotate: 20, color: '#52606d' }, axisLine: { lineStyle: { color: '#b9c6d1' } } },
+      yAxis: { type: 'value', min: 0, max: 100, name: '指数', axisLabel: { color: '#52606d' }, splitLine: { lineStyle: { color: '#e8eef2' } } },
+      dataZoom: [{ type: 'inside', start: 0, end: 34 }, { type: 'slider', start: 0, end: 34, height: 18, bottom: 20 }],
+      series: [
+        { name: '评分指数', type: 'line', smooth: true, symbolSize: 7, data: games.map(game => Math.round(game.rating * 10)) },
+        { name: '价格指数', type: 'line', smooth: true, symbolSize: 7, data: games.map(game => Math.round(game.price / maxPrice * 100)) },
+        { name: '平台覆盖', type: 'line', smooth: true, symbolSize: 7, data: games.map(game => Math.round(game.platforms.length / maxPlatforms * 100)) },
+        { name: '标签丰富度', type: 'line', smooth: true, symbolSize: 7, data: games.map(game => Math.round(game.tags.length / maxTags * 100)) }
+      ]
+    });
+
+    const ratingChart = echarts.init(document.querySelector('#ratingChart'));
+    function updateRatingChart() {
+      const distribution = selectedGame ? selectedGame.review_distribution : overallGroups;
+      const isOverall = !selectedGame;
+      document.querySelector('#ratingTitle').textContent = isOverall ? '总体评价指数分布' : `${selectedGame.name}评分系统`;
+      document.querySelector('#ratingSubtitle').textContent = isOverall
+        ? '按全部游戏的综合评分统计'
+        : '玩家评价百分比：好评、中等、差评合计为 100%';
+      ratingChart.setOption({
+        tooltip: { trigger: 'item', formatter: item => isOverall ? `${item.name}<br>${item.value} 款（${item.percent}%）` : `${item.name}<br>${item.value}%` },
+        legend: { bottom: 12, data: ['好评', '中等', '差评'] },
+        series: [{
+          name: isOverall ? '总体评价' : '玩家评价', type: 'pie', radius: ['52%', '74%'], center: ['50%', '46%'],
+          avoidLabelOverlap: false, itemStyle: { borderColor: '#fff', borderWidth: 4 },
+          label: { show: true, formatter: item => isOverall ? `${item.name}\n${item.value} 款` : `${item.name}\n${item.value}%`, fontSize: 13 },
+          labelLine: { length: 13, length2: 8 },
+          data: ['good', 'medium', 'poor'].map(key => ({ value: distribution[key], name: ratingLabels[key], itemStyle: { color: palette[key] } }))
+        }],
+        graphic: [{ type: 'text', left: 'center', top: '41%', style: { text: isOverall ? `共 ${games.length} 款` : `好评率\n${distribution.good}%`, textAlign: 'center', fill: '#16213e', font: '600 18px Microsoft YaHei UI', lineHeight: 24 } }]
+      }, true);
+    }
+
+    function selectGame(game) {
+      selectedGame = game;
+      renderTable();
+      renderDetail();
+      updateRatingChart();
+    }
+
+    document.querySelector('#gamesBody').addEventListener('click', event => {
+      const row = event.target.closest('tr[data-id]');
+      if (row) selectGame(games.find(game => game.id === row.dataset.id));
+    });
+    document.querySelector('#resetOverview').addEventListener('click', () => {
+      selectedGame = null;
+      renderTable();
+      renderDetail();
+      updateRatingChart();
+    });
+    lineChart.on('click', params => {
+      if (typeof params.dataIndex === 'number') selectGame(games[params.dataIndex]);
+    });
+    renderTable();
+    renderDetail();
+    updateRatingChart();
+      window.addEventListener('resize', () => { lineChart.resize(); ratingChart.resize(); });
+    }
+
+    initializeDashboard().catch(() => {
+      document.querySelector('#gamesBody').innerHTML = '<tr><td colspan="5">游戏数据加载失败，请确认后端服务已经启动。</td></tr>';
+      document.querySelector('#detailSubtitle').textContent = '数据请求失败';
+      document.querySelector('#detailBody').innerHTML = '<div class="empty">请通过 main.py 或 start.bat 启动项目，再访问此页面。</div>';
+    });
+  </script>
+</body>
+</html>
