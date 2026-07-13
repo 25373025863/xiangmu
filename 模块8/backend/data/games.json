@@ -1,0 +1,5 @@
+[
+    {"id": 1, "name": "塞尔达传说：王国之泪", "type": "动作冒险", "platforms": ["Switch"], "price": 59.99},
+    {"id": 2, "name": "巫师3：狂猎", "type": "RPG", "platforms": ["PC", "PS4"], "price": 39.99},
+    {"id": 3, "name": "艾尔登法环", "type": "动作RPG", "platforms": ["PC", "PS5"], "price": 59.99}
+]
