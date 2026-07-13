@@ -4,8 +4,15 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import get_settings
-from backend.models import KeyCheckRequest, KeyCheckResponse, RecommendRequest, RecommendResponse
+from backend.models import (
+    GameDetailResponse,
+    KeyCheckRequest,
+    KeyCheckResponse,
+    RecommendRequest,
+    RecommendResponse,
+)
 from backend.services.ai_service import AiServiceError
+from backend.services.game_service import GameDataError, GameNotFoundError, get_game_detail
 from backend.services.key_service import build_key_check_result
 from backend.services.recommend_service import generate_recommendations
 
@@ -31,6 +38,21 @@ def settings_page():
 @app.get("/api/health")
 def health():
     return {"success": True, "message": "member4 ai module is running"}
+
+
+@app.get("/games/{game_id}", include_in_schema=False)
+def game_detail_page(game_id: str):
+    return FileResponse("frontend/game-detail.html")
+
+
+@app.get("/api/games/{game_id}", response_model=GameDetailResponse)
+def game_detail(game_id: str):
+    try:
+        return GameDetailResponse(data=get_game_detail(game_id))
+    except GameNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="游戏不存在") from exc
+    except GameDataError as exc:
+        raise HTTPException(status_code=500, detail="游戏数据暂时不可用") from exc
 
 
 @app.post("/api/key/check", response_model=KeyCheckResponse)

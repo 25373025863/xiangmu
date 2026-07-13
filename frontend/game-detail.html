@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>游戏详情 - AI 游戏推荐</title>
+    <style>
+      :root { --bg: #f6f7fb; --surface: #fff; --text: #172033; --muted: #667085; --line: #d8deea; --primary: #2563eb; --accent: #067647; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font-family: Arial, "Microsoft YaHei", sans-serif; }
+      button, a { font: inherit; }
+      .page { width: min(1100px, calc(100% - 32px)); margin: 0 auto; padding: 24px 0 52px; }
+      .back-button, .retry-button { min-height: 38px; padding: 0 14px; border: 1px solid var(--line); border-radius: 6px; color: #344054; background: var(--surface); cursor: pointer; }
+      .back-button:hover, .retry-button:hover { border-color: var(--primary); color: var(--primary); }
+      .state { display: grid; min-height: 55vh; place-content: center; text-align: center; color: var(--muted); }
+      .state h1 { color: var(--text); }
+      .state-actions { display: flex; justify-content: center; gap: 10px; }
+      .hero { display: grid; grid-template-columns: minmax(210px, 320px) minmax(0, 1fr); gap: 40px; margin: 30px 0 38px; align-items: end; }
+      .cover, .cover-fallback { display: block; width: 100%; aspect-ratio: 3 / 4; border-radius: 8px; background: #dbeafe; object-fit: cover; }
+      .cover-fallback { display: grid; place-items: center; padding: 20px; color: #1e3a8a; text-align: center; font-size: 24px; font-weight: 700; }
+      .eyebrow { margin: 0 0 8px; color: var(--accent); font-size: 13px; font-weight: 700; }
+      h1 { margin: 0 0 16px; font-size: 40px; line-height: 1.12; } h2 { margin: 0 0 14px; font-size: 20px; }
+      .facts { display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--muted); }
+      .tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 0; padding: 0; list-style: none; }
+      .tags li { padding: 5px 9px; border: 1px solid var(--accent); border-radius: 4px; color: var(--accent); font-size: 13px; }
+      .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; }
+      .section { padding: 24px 0; border-top: 1px solid var(--line); } .section p, dd, .section ul { color: #475467; line-height: 1.7; }
+      .description, .audience, .reason { grid-column: 1; } .meta { grid-column: 2; grid-row: 1 / span 2; }
+      dl { margin: 0; } dl div { padding-bottom: 14px; } dt { margin-bottom: 4px; color: var(--muted); font-size: 13px; } dd { margin: 0; }
+      .audience ul { margin: 0; padding-left: 20px; }
+      .purchase { display: inline-flex; min-height: 42px; align-items: center; margin-top: 22px; padding: 0 16px; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 700; text-decoration: none; }
+      .purchase:hover { background: #05603e; }
+      @media (max-width: 720px) { .hero { grid-template-columns: 132px minmax(0, 1fr); gap: 20px; } h1 { font-size: 30px; } .layout { display: block; } .meta { border-bottom: 1px solid var(--line); } }
+      @media (max-width: 440px) { .hero { grid-template-columns: 1fr; } .cover, .cover-fallback { max-width: 220px; } }
+    </style>
+  </head>
+  <body>
+    <main id="app" class="page" aria-live="polite"></main>
+    <script>
+      const app = document.querySelector("#app");
+
+      function escapeHtml(value) {
+        return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+      }
+
+      function gameId() {
+        const pathId = window.location.pathname.split("/").filter(Boolean).pop();
+        return pathId || new URLSearchParams(window.location.search).get("id");
+      }
+
+      function goBack() {
+        if (window.history.length > 1) window.history.back();
+        else window.location.href = "/";
+      }
+
+      function renderState(title, message, retry) {
+        app.innerHTML = `<section class="state"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p><div class="state-actions">${retry ? '<button class="retry-button" id="retry" type="button">重试</button>' : ""}<button class="back-button" id="back" type="button">返回推荐页</button></div></section>`;
+        document.querySelector("#retry")?.addEventListener("click", loadDetail);
+        document.querySelector("#back").addEventListener("click", goBack);
+      }
+
+      function renderDetail(game) {
+        const reason = new URLSearchParams(window.location.search).get("reason");
+        const cover = game.cover
+          ? `<img class="cover" src="${escapeHtml(game.cover)}" alt="${escapeHtml(game.title)} 游戏封面" />`
+          : `<div class="cover-fallback">${escapeHtml(game.title)}</div>`;
+        const tags = game.tags.map((tag) => `<li>${escapeHtml(tag)}</li>`).join("");
+        const audience = game.suitable_for.length
+          ? game.suitable_for.map((person) => `<li>${escapeHtml(person)}</li>`).join("")
+          : "<li>暂无信息</li>";
+        const purchase = game.purchase_url
+          ? `<a class="purchase" href="${escapeHtml(game.purchase_url)}" target="_blank" rel="noreferrer">前往购买或了解更多</a>`
+          : "";
+
+        app.innerHTML = `<button class="back-button" id="back" type="button">返回推荐页</button>
+          <section class="hero"><div>${cover}</div><div><p class="eyebrow">游戏详情</p><h1>${escapeHtml(game.title)}</h1><div class="facts">${game.score != null ? `<span>评分 ${escapeHtml(game.score)}/10</span>` : ""}${game.price ? `<span>${escapeHtml(game.price)}</span>` : ""}${game.release_date ? `<span>${escapeHtml(game.release_date)}</span>` : ""}</div><ul class="tags">${tags}</ul></div></section>
+          <div class="layout"><section class="section description"><h2>游戏简介</h2><p>${escapeHtml(game.description)}</p></section><aside class="section meta"><dl><div><dt>平台</dt><dd>${escapeHtml(game.platforms.join("、") || "暂无信息")}</dd></div><div><dt>类型</dt><dd>${escapeHtml(game.genres.join("、") || "暂无信息")}</dd></div>${game.developer ? `<div><dt>开发商</dt><dd>${escapeHtml(game.developer)}</dd></div>` : ""}</dl></aside><section class="section audience"><h2>适合人群</h2><ul>${audience}</ul></section>${reason ? `<section class="section reason"><h2>推荐理由</h2><p>${escapeHtml(reason)}</p></section>` : ""}</div>${purchase}`;
+        document.querySelector("#back").addEventListener("click", goBack);
+        document.querySelector(".cover")?.addEventListener("error", (event) => {
+          event.currentTarget.replaceWith(Object.assign(document.createElement("div"), { className: "cover-fallback", textContent: game.title }));
+        });
+      }
+
+      async function loadDetail() {
+        const id = gameId();
+        if (!id) return renderState("缺少游戏 ID", "请从推荐结果中打开详情页。", false);
+        renderState("正在加载游戏详情", "请稍候。", false);
+        try {
+          const response = await fetch(`/api/games/${encodeURIComponent(id)}`);
+          const body = await response.json().catch(() => null);
+          if (response.status === 404) return renderState("未找到这款游戏", "该游戏可能已下架，或链接中的游戏 ID 不正确。", false);
+          if (!response.ok || !body?.success || !body.data) throw new Error(body?.detail || "暂时无法获取游戏详情");
+          renderDetail(body.data);
+        } catch (error) {
+          renderState("游戏详情暂时无法加载", error.message || "请检查后端服务是否已启动。", true);
+        }
+      }
+
+      loadDetail();
+    </script>
+  </body>
+</html>
