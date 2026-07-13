@@ -1,52 +1,72 @@
 <template>
-  <article class="game-card">
-    <h3 class="game-name">{{ gameName }}</h3>
-    <p>{{ gameDescription }}</p>
-    <span v-if="isFavorite" class="favorite-status">已收藏</span>
-    <button class="detail-button" type="button" @click="openDetail">查看详情</button>
-  </article>
+  <div class="fav-card">
+    <!-- 游戏名称绑定class -->
+    <h3 class="game-name">{{ game.name }}</h3>
+    <p>{{ game.desc }}</p>
+    <span v-if="isFavorite">❤️ 已收藏</span>
+    <span v-else>🤍 收藏</span>
+  </div>
 </template>
 
-<script setup>
-import { computed } from 'vue'
-import { useRouter } from 'vue-router'
+<style scoped>
+.game-name {
+  cursor: pointer;
+  transition: color 0.2s ease;
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+/* 鼠标悬浮变蓝色 */
+.game-name:hover {
+  color: #3b82f6;
+}
+</style>
 
+<script setup>
+import { ref, defineProps } from 'vue';
+import { addFavorite, delFavorite } from '../api/recommendApi';
+
+// 接收游戏数据
 const props = defineProps({
-  game: { type: Object, required: true },
+  game: Object,
   isFavorite: {
     type: Boolean,
     default: false
   }
-})
+});
 
-const router = useRouter()
-const gameName = computed(() => props.game.title || props.game.name || '未命名游戏')
-const gameDescription = computed(() => props.game.reason || props.game.description || props.game.desc || '')
+const isFav = ref(props.isFavorite);
 
-function openDetail() {
-  const gameId = props.game.game_id || props.game.id
-  if (!gameId) return
-
-  const reason = props.game.reason
-  if (reason) sessionStorage.setItem(`recommendation-reason:${gameId}`, reason)
-  router.push({
-    name: 'game-detail',
-    params: { gameId: String(gameId) },
-    query: reason ? { reason } : undefined
-  })
-}
+// 收藏/取消收藏
+const handleFav = async () => {
+  try {
+    if (isFav.value) {
+      await delFavorite(props.game.id);
+      isFav.value = false;
+      alert('取消收藏成功');
+    } else {
+      await addFavorite(props.game.id);
+      isFav.value = true;
+      alert('收藏成功');
+    }
+  } catch (err) {
+    alert('操作失败，请重试');
+  }
+};
 </script>
 
 <style scoped>
 .game-card {
+  position: relative;
   border: 1px solid #eee;
-  padding: 14px;
-  border-radius: 6px;
-  background: #fff;
+  padding: 12px;
+  border-radius: 8px;
 }
-.game-name { margin: 0 0 8px; color: #1e293b; font-size: 16px; }
-p { min-height: 40px; margin: 0 0 12px; color: #64748b; line-height: 1.5; }
-.favorite-status { display: inline-block; margin: 0 10px 0 0; color: #b45309; font-size: 13px; }
-.detail-button { padding: 6px 12px; border: 1px solid #2563eb; border-radius: 4px; background: #fff; color: #2563eb; }
-.detail-button:hover { background: #2563eb; color: #fff; }
+.fav-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border: none;
+  background: #fff;
+  cursor: pointer;
+}
 </style>
