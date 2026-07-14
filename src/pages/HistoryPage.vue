@@ -87,7 +87,8 @@ function formatPreference(obj) {
   return list.join('，')
 }
 
-// 模拟历史测试数据
+// 模拟历史测试数据（仅本地调试备用，正式环境注释禁用）
+/*
 const mockHistoryData = [
   {
     id: 1,
@@ -117,19 +118,20 @@ const mockHistoryData = [
     ]
   }
 ]
+*/
 
 const loadHistory = async () => {
-  // 给每条历史记录附加随机背景色
-  history.value = mockHistoryData.map(item => ({
-    ...item,
-    bgColor: getRandomBgColor()
-  }))
-  total.value = mockHistoryData.length
+  // 屏蔽Mock假数据逻辑
+  // history.value = mockHistoryData.map(item => ({
+  //   ...item,
+  //   bgColor: getRandomBgColor()
+  // }))
+  // total.value = mockHistoryData.length
 
-  // 后端真实接口（正式上线打开注释）
-  // const res = await getHistoryList(page.value, pageSize);
-  // history.value = res.data.list.map(item => ({ ...item, bgColor: getRandomBgColor() }));
-  // total.value = res.data.total;
+  // 启用后端分页接口，拉取真实历史数据
+  const res = await getHistoryList(page.value, pageSize);
+  history.value = res.data.list.map(item => ({ ...item, bgColor: getRandomBgColor() }));
+  total.value = res.data.total;
 };
 
 watch(page, loadHistory);
