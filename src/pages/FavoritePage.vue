@@ -58,7 +58,8 @@ function getRandomBgColor() {
   return colorPool[randomIndex]
 }
 
-// 模拟测试收藏实例数据（8条游戏示例）
+// 模拟测试收藏实例数据（仅本地调试用，正式不启用）
+/*
 const mockFavData = [
   {
     id: 1,
@@ -117,30 +118,30 @@ const mockFavData = [
     isFavorite: true
   }
 ]
+*/
 
-// 加载收藏数据，给每条数据附加随机背景色
+// 加载收藏数据，请求后端真实接口
 const loadData = async () => {
-  // 给每条数据增加随机背景色字段
-  list.value = mockFavData.map(item => {
-    return {
-      ...item,
-      bgColor: getRandomBgColor()
-    }
-  })
-  total.value = mockFavData.length
+  // 注释mock数据，使用后端接口
+  // list.value = mockFavData.map(item => ({ ...item, bgColor: getRandomBgColor() }))
+  // total.value = mockFavData.length
 
-  // ========== 后端接口代码，正式使用时打开注释 ==========
-  // const res = await getFavoriteList(page.value, pageSize);
-  // list.value = res.data.list.map(item => ({ ...item, bgColor: getRandomBgColor() }));
-  // total.value = res.data.total;
+  // 启用真实后端分页接口
+  const res = await getFavoriteList(page.value, pageSize);
+  list.value = res.data.list.map(item => ({ ...item, bgColor: getRandomBgColor() }));
+  total.value = res.data.total;
 };
 
-// 取消收藏刷新列表
+// 取消收藏：调用后端删除接口，完成后重新拉取列表
 const removeFav = async (gameId) => {
-  list.value = list.value.filter(item => item.id !== gameId)
-  total.value = list.value.length
-  // await delFavorite(gameId);
-  // loadData();
+  // 不再前端本地过滤数据
+  // list.value = list.value.filter(item => item.id !== gameId)
+  // total.value = list.value.length
+
+  // 调用后端删除收藏接口
+  await delFavorite(gameId);
+  // 删除成功后刷新当前页数据
+  loadData();
 };
 
 watch(page, loadData)
