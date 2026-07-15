@@ -1,6 +1,6 @@
 # 游戏数据模块
 
-这是 AI 游戏推荐项目中的游戏数据子模块。项目使用 Python 标准库提供本地数据接口，浏览器中的 ECharts 页面负责游戏列表、详情、折线图和评分环图展示。
+这是 AI 游戏推荐项目中的游戏数据子模块。项目使用 Python 标准库提供本地数据接口，浏览器中的目录页面负责筛选、卡片浏览、详情和分页加载展示。
 
 ## 快速运行
 
@@ -10,14 +10,14 @@
 py main.py
 ```
 
-服务启动后会自动打开 `http://127.0.0.1:8000`。关闭运行命令窗口或按 `Ctrl+C` 可以停止服务。
+服务启动后会自动打开 `http://127.0.0.1:18800`。这个独立端口不会与项目主后端的 `8000` 端口冲突。关闭运行命令窗口或按 `Ctrl+C` 可以停止服务。
 
 ## 项目结构
 
 ```text
 GameData-Model/
 |-- frontend/
-|   `-- index.html                 # ECharts 单页数据总览
+|   `-- index.html                 # 卡片式游戏目录页面
 |-- backend/
 |   |-- app.py                     # 本地 HTTP 服务和 API 路由
 |   |-- data/games.json            # 游戏数据
@@ -35,9 +35,11 @@ GameData-Model/
 ## 已实现功能
 
 - 游戏列表、详情和 60 条演示游戏数据。
-- 通过 `GET /api/games` 获取游戏数据，支持关键词、类型、平台、标签筛选。
-- ECharts 折线图展示评分指数、价格指数、平台覆盖和标签丰富度。
-- 默认环图展示总体评价分布；点击游戏列表或折线图数据点后，环图切换为该游戏的好评、中等、差评百分比。
+- 通过 `GET /api/games` 获取游戏数据，支持关键词、类型、平台、标签筛选、排序和 `page`/`size` 分页。
+- 主目录为卡片式无限加载：滚动到末尾会继续取下一页，同时保留可访问的“加载更多游戏”按钮。
+- 选择卡片后，在同页详情面板显示平台、开发商、简介和玩家评价占比，不需要跳转或依赖图表初始化。
+- 已知 Steam App ID 的游戏会在本地生成封面显示后异步替换为 Steam CDN 封面；无网络、Steam 不可访问或非 Steam 游戏始终使用本地 SVG 封面。
+- 前端不再依赖 ECharts 或其他在线脚本，目录内容可以先于所有外部资源正常显示。
 - 前端与后端在目录和运行职责上分离，后续可替换为 FastAPI、SQLite 或团队统一后端。
 
 ## GitHub 上传建议
@@ -56,6 +58,12 @@ git commit -m "feat: add game data dashboard"
 git rm -r --cached .idea
 ```
 
-## 图表说明
+## 验证
 
-ECharts 通过在线资源加载，因此浏览器需要联网。页面会从本地后端请求最新游戏数据；修改 `backend/data/games.json` 后，刷新网页即可看到新的图表结果。
+在 `GameData-Model` 目录执行：
+
+```powershell
+python -m unittest backend.tests.test_game_service backend.tests.test_catalogue_api
+```
+
+页面会从本地后端请求最新游戏数据；修改 `backend/data/games.json` 后，刷新网页即可看到新的目录和本地回退封面。

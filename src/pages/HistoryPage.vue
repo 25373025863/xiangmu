@@ -130,7 +130,18 @@ const loadHistory = async () => {
 
   // 启用后端分页接口，拉取真实历史数据
   const res = await getHistoryList(page.value, pageSize);
-  history.value = res.data.list.map(item => ({ ...item, bgColor: getRandomBgColor() }));
+  history.value = res.data.list.map(item => ({
+    ...item,
+    createTime: item.created_at,
+    preference: item.preferences || {},
+    games: (item.recommendations || []).map(game => ({
+      id: game.game_id,
+      name: game.title,
+      desc: game.reason,
+      isFavorite: false
+    })),
+    bgColor: getRandomBgColor()
+  }));
   total.value = res.data.total;
 };
 

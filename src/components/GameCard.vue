@@ -1,10 +1,9 @@
 <template>
   <div class="fav-card">
     <!-- 游戏名称绑定class -->
-    <h3 class="game-name">{{ game.name }}</h3>
-    <p>{{ game.desc }}</p>
-    <span v-if="isFavorite">❤️ 已收藏</span>
-    <span v-else>🤍 收藏</span>
+    <h3 class="game-name">{{ game.name || game.title }}</h3>
+    <p>{{ game.desc || game.description || game.reason }}</p>
+    <button class="fav-btn" @click="handleFav">{{ isFav ? '已收藏' : '收藏' }}</button>
   </div>
 </template>
 

@@ -7,10 +7,11 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from fastapi import FastAPI, HTTPException
@@ -98,32 +99,93 @@ app.add_middleware(
 )
 
 
+STEAM_COMMUNITY_HOSTS = {"steamcommunity.com", "www.steamcommunity.com"}
+STEAM_TIMEOUT_SECONDS = 12
+
+
+@dataclass(frozen=True)
+class HttpPayload:
+    """The response metadata needed to distinguish XML from a login redirect."""
+
+    body: bytes
+    final_url: str
+    content_type: str
+
+
+@dataclass(frozen=True)
+class SteamLibrary:
+    owned_games: list[dict[str, object]]
+    recent_games: list[dict[str, object]]
+    library_visible: bool
+
+
 def parse_steam_identifier(raw: str) -> tuple[str, str]:
-    """返回 URL 资料段类型和标识；支持 ID、ID64、profiles/ 与 id/ 链接。"""
-    value = raw.strip().rstrip("/")
+    """Return a canonical Steam Community path segment and identifier.
+
+    Accepts SteamID64, Steam2 IDs, profile/vanity URLs (including links to a
+    subpage such as ``/games``), and a bare vanity name. Parsing the URL rather
+    than searching it prevents unrelated domains from being accepted.
+    """
+    value = raw.strip()
     if re.fullmatch(r"\d{17}", value):
         return "profiles", value
-    match = re.fullmatch(r"STEAM_[0-5]:[01]:\d+", value, re.IGNORECASE)
-    if match:
-        # Steam2 ID: account_id + 76561197960265728
-        universe, parity, account = value.upper().split(":")
+
+    steam2_match = re.fullmatch(r"STEAM_[0-5]:[01]:\d+", value, re.IGNORECASE)
+    if steam2_match:
+        _, parity, account = value.upper().split(":")
         return "profiles", str(76561197960265728 + int(account) * 2 + int(parity))
-    match = re.search(r"steamcommunity\.com/(profiles|id)/([^/?#]+)", value, re.IGNORECASE)
-    if match:
-        return match.group(1).lower(), match.group(2)
+
+    steam3_match = re.fullmatch(r"\[U:1:(\d+)\]", value, re.IGNORECASE)
+    if steam3_match:
+        return "profiles", str(76561197960265728 + int(steam3_match.group(1)))
+
+    candidate = value
+    if candidate.lower().startswith(("steamcommunity.com/", "www.steamcommunity.com/")):
+        candidate = f"https://{candidate}"
+    parsed = urlparse(candidate)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme and host:
+        if host not in STEAM_COMMUNITY_HOSTS:
+            raise ValueError("请输入 steamcommunity.com 的个人资料链接或有效 SteamID")
+        path_parts = [unquote(part) for part in parsed.path.split("/") if part]
+        if len(path_parts) >= 2 and path_parts[0].lower() in {"profiles", "id"}:
+            segment = path_parts[0].lower()
+            identifier = path_parts[1]
+            if segment == "profiles" and re.fullmatch(r"\d{17}", identifier):
+                return segment, identifier
+            if segment == "id" and re.fullmatch(r"[A-Za-z0-9_-]{2,100}", identifier):
+                return segment, identifier
+        raise ValueError("Steam 个人资料链接应包含 /profiles/<SteamID64> 或 /id/<自定义 ID>")
+
     if re.fullmatch(r"[A-Za-z0-9_-]{2,100}", value):
         return "id", value
     raise ValueError("请输入有效的 SteamID、SteamID64、个人资料链接或自定义 URL")
 
 
+def fetch_response(url: str) -> HttpPayload:
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (compatible; GAME-PULSE/2.0; public-profile reader)",
+            "Accept": "application/json, application/xml, text/xml, text/html;q=0.9, */*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.8",
+        },
+    )
+    with urlopen(request, timeout=STEAM_TIMEOUT_SECONDS) as response:
+        content_type = response.headers.get_content_type()
+        return HttpPayload(response.read(), response.geturl(), content_type)
+
+
 def fetch(url: str) -> bytes:
-    request = Request(url, headers={"User-Agent": "GAME-PULSE/2.0 (public-profile reader)"})
-    with urlopen(request, timeout=8) as response:
-        return response.read()
+    """Compatibility wrapper for callers that only need the response body."""
+    return fetch_response(url).body
 
 
 def fetch_json(url: str) -> dict[str, object]:
-    return json.loads(fetch(url).decode("utf-8"))
+    payload = json.loads(fetch(url).decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Steam API returned an unexpected JSON payload")
+    return payload
 
 
 def text(element: ET.Element | None, tag: str) -> str | None:
@@ -131,18 +193,51 @@ def text(element: ET.Element | None, tag: str) -> str | None:
     return node.text.strip() if node is not None and node.text else None
 
 
-def game_record(app_id: int | None, name: str | None, minutes: int | float) -> dict[str, object] | None:
-    if not name:
+def game_record(
+    app_id: int | str | None,
+    name: str | None,
+    minutes: int | float | str | None,
+) -> dict[str, object] | None:
+    if not isinstance(name, str) or not name.strip():
         return None
+    try:
+        normalised_app_id = int(app_id) if app_id is not None else None
+    except (TypeError, ValueError):
+        normalised_app_id = None
+    try:
+        hours_played = round(float(minutes or 0) / 60, 1)
+    except (TypeError, ValueError):
+        hours_played = 0
     return {
-        "app_id": app_id,
-        "name": name,
-        "hours_played": round(float(minutes) / 60, 1),
+        "app_id": normalised_app_id,
+        "name": name.strip(),
+        "hours_played": hours_played,
     }
 
 
-def read_steam_web_api_library(steam_id64: str) -> tuple[list[dict[str, object]], list[dict[str, object]]] | None:
-    """读取官方 API 的已拥有和最近游玩游戏；缺少服务端 Key 时返回 None。"""
+def _normalise_web_api_games(
+    response: dict[str, object],
+    playtime_field: str,
+) -> list[dict[str, object]]:
+    games = response.get("games", [])
+    if not isinstance(games, list):
+        return []
+    records = [
+        game_record(game.get("appid"), game.get("name"), game.get(playtime_field, 0))
+        for game in games
+        if isinstance(game, dict)
+    ]
+    return [record for record in records if record]
+
+
+def read_steam_web_api_library(steam_id64: str) -> SteamLibrary | None:
+    """Read the official owned/recent-game endpoints when a server key exists.
+
+    A successful owned-games response with ``game_count`` is meaningful even
+    when the account owns zero games. An empty ``response`` instead signals
+    that Steam did not expose the library, usually because Game details are
+    private.
+    """
     api_key = os.getenv("STEAM_API_KEY")
     if not api_key:
         return None
@@ -152,57 +247,71 @@ def read_steam_web_api_library(steam_id64: str) -> tuple[list[dict[str, object]]
         "include_played_free_games": "1",
     })
     recent_query = urlencode({"key": api_key, "steamid": steam_id64, "format": "json"})
-    owned_payload = fetch_json(f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?{owned_query}")
-    recent_payload = fetch_json(f"https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?{recent_query}")
+    owned_payload = fetch_json(
+        f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?{owned_query}"
+    )
     owned_response = owned_payload.get("response", {})
-    recent_response = recent_payload.get("response", {})
-    owned_games = owned_response.get("games", []) if isinstance(owned_response, dict) else []
-    recent_games = recent_response.get("games", []) if isinstance(recent_response, dict) else []
+    if not isinstance(owned_response, dict):
+        raise ValueError("Steam owned-games response is malformed")
 
-    normalized_owned = [
-        game_record(game.get("appid"), game.get("name"), game.get("playtime_forever", 0))
-        for game in owned_games if isinstance(game, dict)
-    ]
-    normalized_recent = [
-        game_record(game.get("appid"), game.get("name"), game.get("playtime_2weeks", 0))
-        for game in recent_games if isinstance(game, dict)
-    ]
-    return ([game for game in normalized_owned if game], [game for game in normalized_recent if game])
-
-
-def read_public_steam_profile(raw_identifier: str) -> SteamPreferenceSummary:
+    recent_games: list[dict[str, object]] = []
     try:
-        segment, identifier = parse_steam_identifier(raw_identifier)
-    except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+        recent_payload = fetch_json(
+            f"https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?{recent_query}"
+        )
+        recent_response = recent_payload.get("response", {})
+        if isinstance(recent_response, dict):
+            recent_games = _normalise_web_api_games(recent_response, "playtime_2weeks")
+    except (HTTPError, URLError, OSError, ValueError, json.JSONDecodeError):
+        # Recent games are supplementary. Keep a valid owned-games result.
+        recent_games = []
 
-    profile_url = f"https://steamcommunity.com/{segment}/{quote(identifier, safe='')}/"
+    return SteamLibrary(
+        owned_games=_normalise_web_api_games(owned_response, "playtime_forever"),
+        recent_games=recent_games,
+        library_visible="game_count" in owned_response or "games" in owned_response,
+    )
+
+
+def resolve_vanity_url(vanity_name: str) -> str | None:
+    """Resolve an /id URL if the public profile XML endpoint is unavailable."""
+    api_key = os.getenv("STEAM_API_KEY")
+    if not api_key:
+        return None
+    query = urlencode({"key": api_key, "vanityurl": vanity_name})
+    payload = fetch_json(
+        f"https://api.steampowered.com/ISteamUser/ResolveVanityURL/v0001/?{query}"
+    )
+    response = payload.get("response", {})
+    if not isinstance(response, dict) or response.get("success") != 1:
+        return None
+    steam_id64 = response.get("steamid")
+    return steam_id64 if isinstance(steam_id64, str) and re.fullmatch(r"\d{17}", steam_id64) else None
+
+
+def is_login_redirect(payload: HttpPayload) -> bool:
+    final_path = urlparse(payload.final_url).path.lower()
+    if final_path.startswith("/login"):
+        return True
+    body_start = payload.body[:2048].lower()
+    return b"steamcommunity.com/login" in body_start or b"id=\"login_form\"" in body_start
+
+
+def parse_public_library_xml(payload: HttpPayload) -> tuple[list[dict[str, object]], list[GameType], bool] | None:
+    """Parse the legacy game-list XML only when Steam really returned XML."""
+    if is_login_redirect(payload):
+        return None
     try:
-        root = ET.fromstring(fetch(f"{profile_url}?xml=1"))
-    except HTTPError as error:
-        if error.code == 404:
-            return SteamPreferenceSummary(steam_id64=identifier if segment == "profiles" else "", visibility="not_found", profile_url=profile_url, message="未找到该 Steam 个人资料。")
-        return SteamPreferenceSummary(steam_id64=identifier if segment == "profiles" else "", visibility="unavailable", profile_url=profile_url, message="Steam 暂时无法响应，请稍后重试。")
-    except (URLError, ET.ParseError, TimeoutError):
-        return SteamPreferenceSummary(steam_id64=identifier if segment == "profiles" else "", visibility="unavailable", profile_url=profile_url, message="无法连接 Steam，请检查网络后重试。")
+        root = ET.fromstring(payload.body)
+    except (ET.ParseError, ValueError):
+        return None
+    if root.tag.lower() not in {"gameslist", "games"}:
+        return None
 
-    steam_id64 = text(root, "steamID64") or (identifier if segment == "profiles" else "")
-    profile_name = text(root, "steamID")
-    privacy = text(root, "privacyState")
-    if privacy and privacy.lower() != "public":
-        return SteamPreferenceSummary(steam_id64=steam_id64, profile_name=profile_name, profile_url=profile_url, visibility="private", message="该 Steam 资料或游戏库不可见，请将资料和游戏详情设为公开。")
-
-    games_url = f"https://steamcommunity.com/{segment}/{quote(identifier, safe='')}/games/?tab=all&xml=1"
-    try:
-        games_root = ET.fromstring(fetch(games_url))
-    except (HTTPError, URLError, ET.ParseError, TimeoutError):
-        return SteamPreferenceSummary(steam_id64=steam_id64, profile_name=profile_name, profile_url=profile_url, visibility="public", message="已读取公开资料，但游戏库未公开或暂时不可读取；你仍可手动填写偏好。")
-
-    games = games_root.findall(".//game")
     genres: Counter[str] = Counter()
     owned_games: list[dict[str, object]] = []
     multiplayer = False
-    for game in games:
+    for game in root.findall(".//game"):
         name = text(game, "name")
         app_id_raw = text(game, "appID")
         app_id = int(app_id_raw) if app_id_raw and app_id_raw.isdigit() else None
@@ -221,27 +330,157 @@ def read_public_steam_profile(raw_identifier: str) -> SteamPreferenceSummary:
         if record:
             owned_games.append(record)
 
-    data_source = "public_xml"
-    recent_games: list[dict[str, object]] = []
+    return owned_games, [genre for genre, _ in genres.most_common(3)], multiplayer
+
+
+def _profile_summary(
+    *,
+    steam_id64: str,
+    profile_name: str | None,
+    profile_url: str,
+    owned_games: list[dict[str, object]] | None = None,
+    recent_games: list[dict[str, object]] | None = None,
+    inferred_game_types: list[GameType] | None = None,
+    suggested_player_mode: PlayerMode | None = None,
+    data_source: Literal["steam_web_api", "public_xml", "profile_only"] = "profile_only",
+    message: str,
+) -> SteamPreferenceSummary:
+    owned = sorted(owned_games or [], key=lambda item: float(item["hours_played"]), reverse=True)
+    recent = sorted(recent_games or [], key=lambda item: float(item["hours_played"]), reverse=True)
+    return SteamPreferenceSummary(
+        steam_id64=steam_id64,
+        profile_name=profile_name,
+        profile_url=profile_url,
+        visibility="public",
+        game_count=len(owned),
+        total_playtime_hours=round(sum(float(game["hours_played"]) for game in owned), 1),
+        top_games=owned[:5],
+        recent_games=recent[:5],
+        owned_game_app_ids=[int(game["app_id"]) for game in owned if isinstance(game.get("app_id"), int)],
+        inferred_game_types=inferred_game_types or [],
+        suggested_player_mode=suggested_player_mode,
+        data_source=data_source,
+        message=message,
+    )
+
+
+def _try_web_api_profile_fallback(
+    *,
+    segment: str,
+    identifier: str,
+    profile_url: str,
+) -> SteamPreferenceSummary | None:
+    """Use the official API when Steam Community profile XML is unavailable."""
+    try:
+        steam_id64 = identifier if segment == "profiles" else resolve_vanity_url(identifier)
+        if not steam_id64:
+            return None
+        api_library = read_steam_web_api_library(steam_id64)
+    except (HTTPError, URLError, OSError, ValueError, json.JSONDecodeError):
+        return None
+
+    if not api_library or not api_library.library_visible:
+        return None
+    return _profile_summary(
+        steam_id64=steam_id64,
+        profile_name=None,
+        profile_url=profile_url,
+        owned_games=api_library.owned_games,
+        recent_games=api_library.recent_games,
+        data_source="steam_web_api",
+        message="已通过 Steam Web API 读取公开游戏库。",
+    )
+
+
+def read_public_steam_profile(raw_identifier: str) -> SteamPreferenceSummary:
+    try:
+        segment, identifier = parse_steam_identifier(raw_identifier)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    profile_url = f"https://steamcommunity.com/{segment}/{quote(identifier, safe='')}/"
+    try:
+        profile_payload = fetch_response(f"{profile_url}?xml=1")
+        if is_login_redirect(profile_payload):
+            raise ET.ParseError("Steam redirected the profile request to login")
+        root = ET.fromstring(profile_payload.body)
+        if root.tag.lower() != "profile":
+            raise ET.ParseError("Steam did not return a profile XML document")
+    except HTTPError as error:
+        if error.code == 404:
+            return SteamPreferenceSummary(steam_id64=identifier if segment == "profiles" else "", visibility="not_found", profile_url=profile_url, message="未找到该 Steam 个人资料。")
+        api_summary = _try_web_api_profile_fallback(
+            segment=segment,
+            identifier=identifier,
+            profile_url=profile_url,
+        )
+        if api_summary:
+            return api_summary
+        return SteamPreferenceSummary(steam_id64=identifier if segment == "profiles" else "", visibility="unavailable", profile_url=profile_url, message="Steam 暂时无法响应，请稍后重试。")
+    except (URLError, OSError, ET.ParseError, TimeoutError):
+        api_summary = _try_web_api_profile_fallback(
+            segment=segment,
+            identifier=identifier,
+            profile_url=profile_url,
+        )
+        if api_summary:
+            return api_summary
+        return SteamPreferenceSummary(steam_id64=identifier if segment == "profiles" else "", visibility="unavailable", profile_url=profile_url, message="无法连接 Steam，请检查网络后重试。")
+
+    steam_id64 = text(root, "steamID64") or (identifier if segment == "profiles" else "")
+    profile_name = text(root, "steamID")
+    privacy = text(root, "privacyState")
+    if privacy and privacy.lower() != "public":
+        return SteamPreferenceSummary(steam_id64=steam_id64, profile_name=profile_name, profile_url=profile_url, visibility="private", message="该 Steam 资料或游戏库不可见，请将资料和游戏详情设为公开。")
+
     try:
         api_library = read_steam_web_api_library(steam_id64)
-    except (HTTPError, URLError, ValueError, TimeoutError, json.JSONDecodeError):
+    except (HTTPError, URLError, OSError, ValueError, json.JSONDecodeError):
         api_library = None
-    if api_library is not None:
-        owned_games, recent_games = api_library
-        data_source = "steam_web_api"
+    if api_library and api_library.library_visible:
+        return _profile_summary(
+            steam_id64=steam_id64,
+            profile_name=profile_name,
+            profile_url=profile_url,
+            owned_games=api_library.owned_games,
+            recent_games=api_library.recent_games,
+            data_source="steam_web_api",
+            message="Steam 公开游戏库读取成功，可将摘要合并到本次偏好。",
+        )
 
-    owned_games.sort(key=lambda item: float(item["hours_played"]), reverse=True)
-    inferred = [genre for genre, _ in genres.most_common(3)]
-    return SteamPreferenceSummary(
-        steam_id64=steam_id64, profile_name=profile_name, profile_url=profile_url, visibility="public",
-        game_count=len(owned_games), total_playtime_hours=round(sum(float(game["hours_played"]) for game in owned_games), 1),
-        top_games=owned_games[:5], recent_games=recent_games[:5],
-        owned_game_app_ids=[int(game["app_id"]) for game in owned_games if isinstance(game.get("app_id"), int)],
-        inferred_game_types=inferred,
-        suggested_player_mode="在线多人" if multiplayer else "单人",
-        data_source=data_source,
-        message="Steam 公开资料读取成功，可将摘要合并到本次偏好。",
+    # Steam has begun redirecting this legacy endpoint to login for many public
+    # profiles. Keep it as a compatibility fallback, but never parse that HTML
+    # response as an empty XML game list.
+    games_url = f"{profile_url}games/?tab=all&xml=1"
+    try:
+        legacy_library = parse_public_library_xml(fetch_response(games_url))
+    except (HTTPError, URLError, OSError, TimeoutError):
+        legacy_library = None
+    if legacy_library:
+        owned_games, inferred_types, multiplayer = legacy_library
+        return _profile_summary(
+            steam_id64=steam_id64,
+            profile_name=profile_name,
+            profile_url=profile_url,
+            owned_games=owned_games,
+            inferred_game_types=inferred_types,
+            suggested_player_mode="在线多人" if multiplayer else "单人",
+            data_source="public_xml",
+            message="Steam 公开游戏库读取成功，可将摘要合并到本次偏好。",
+        )
+
+    if api_library and not api_library.library_visible:
+        library_message = "Steam 资料可读，但“游戏详情”当前未公开；请将其设为公开后重试。"
+    elif os.getenv("STEAM_API_KEY"):
+        library_message = "Steam 资料可读，但游戏库暂时不可读取；请确认“游戏详情”已公开后重试。"
+    else:
+        library_message = "Steam 资料可读，但 Steam 已限制此公开游戏库入口；请配置服务器 STEAM_API_KEY 后重试，或继续手动填写偏好。"
+    return _profile_summary(
+        steam_id64=steam_id64,
+        profile_name=profile_name,
+        profile_url=profile_url,
+        data_source="profile_only",
+        message=library_message,
     )
 
 

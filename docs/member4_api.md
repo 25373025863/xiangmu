@@ -2,21 +2,21 @@
 
 ## 文件范围
 
-- `backend/app.py`：FastAPI 入口，包含 `/api/recommend` 和 `/api/key/check`
-- `backend/services/key_service.py`：API Key 校验、脱敏和来源选择
-- `backend/services/prompt_service.py`：推荐 prompt 模板
-- `backend/services/ai_service.py`：OpenAI 兼容 Chat Completions 调用
-- `backend/services/recommend_service.py`：推荐生成、AI JSON 解析、本地演示兜底
-- `frontend/settings.html`：可选设置页和接口联调页
+- `backend/src/routes/key_routes.py`：`/api/key/check` 路由
+- `backend/src/services/key_service.py`：Key 脱敏、接口与模型校验、逐请求 Provider 选择
+- `backend/src/services/ai_service.py`：OpenAI 兼容 Chat Completions 调用
+- `backend/src/services/recommend_service.py`：推荐生成、AI JSON 解析、本地演示兜底
+- `frontend/src/pages/SettingsPage.js`：正式设置页
+- `frontend/src/utils/providerConfig.js`：会话配置的统一读取、迁移和清除
 
 ## 运行方式
 
-```bash
-pip install -r requirements.txt
-uvicorn backend.app:app --reload
+```powershell
+python -m pip install -r backend/requirements-dev.txt
+python -m backend.src.server
 ```
 
-打开 `http://127.0.0.1:8000/` 可以测试 API Key 设置和推荐生成。
+打开 `http://127.0.0.1:5173/settings` 设置用户 Key、接口地址和模型；接口调试页面位于 `http://127.0.0.1:8000/docs`。
 
 ## 环境变量
 
@@ -35,11 +35,18 @@ DEMO_MODE_WITHOUT_KEY=true
 
 ## POST `/api/key/check`
 
-请求体：
+Key 使用请求头：
+
+```text
+x-ai-api-key: user_api_key_here
+```
+
+请求体只包含非敏感字段：
 
 ```json
 {
-  "apiKey": "user_api_key_here"
+  "apiBaseUrl": "https://api.example.com/v1",
+  "model": "provider-model"
 }
 ```
 
@@ -54,7 +61,9 @@ DEMO_MODE_WITHOUT_KEY=true
     "userKeyValid": true,
     "maskedUserKey": "sk-****abcd",
     "defaultKeyConfigured": false,
-    "activeSource": "user"
+    "activeSource": "user",
+    "apiBaseUrl": "https://api.example.com/v1/chat/completions",
+    "model": "provider-model"
   }
 }
 ```
@@ -81,6 +90,8 @@ x-ai-api-key: user_api_key_here
     "chinese_support": true,
     "extra_requirements": "希望有重复挑战价值"
   },
+  "apiBaseUrl": "https://api.example.com/v1/chat/completions",
+  "model": "provider-model",
   "limit": 5
 }
 ```

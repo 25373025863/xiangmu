@@ -7,12 +7,32 @@
 核心目标：
 
 - 根据用户偏好生成个性化游戏推荐
+- 在正式首页直接浏览 Steam 在线游戏目录，支持搜索、排序和卡片式无限加载
 - 支持多维度筛选，例如平台、类型、价格、评分、多人/单人
 - 支持通过 Steam 个人资料导入已拥有游戏、最近游玩记录和游玩时长等偏好信息
 - 使用 AI API 生成推荐理由和对比分析
 - 提供简洁易用的前端界面
 - 支持用户在应用中输入和更换自己的 AI API Key
 - 保证项目默认 API Key 不写进前端代码，也不上传到 GitHub
+
+## 当前运行方式
+
+项目已统一为 Vite 前端和 FastAPI 后端。旧成员目录仅作为迁移来源，不再作为活动入口。
+
+```powershell
+# 终端 1：后端 http://127.0.0.1:8000
+python -m pip install -r backend/requirements-dev.txt
+python -m backend.src.server
+
+# 终端 2：前端 http://127.0.0.1:5173
+cd frontend
+npm install
+npm run dev
+```
+
+接口文档位于 `http://127.0.0.1:8000/docs`，当前完成状态见 [`docs/status.md`](docs/status.md)。
+
+正式首页已整合在线游戏目录，不需要再启动独立的游戏数据页面。首页通过 `GET /api/catalogue/games` 从主后端按页读取 Steam 商店游戏，自动展示封面、价格、平台、发售日期和评测信息；Steam 暂时不可访问时，接口会明确标记降级状态并返回本地备用数据。
 
 ## 8 人团队分工
 
@@ -72,9 +92,9 @@
 
 前端任务：
 
-- 实现游戏库浏览页面
+- 在正式首页整合游戏库浏览区域
 - 实现游戏标签、平台、价格等基础信息展示
-- 实现简单筛选和搜索界面
+- 实现卡片式无限加载、在线封面、搜索和排序界面
 
 后端任务：
 
@@ -295,7 +315,48 @@
 8. 如果用户没有提供 API Key，后端使用 `.env` 中的默认 API Key
 9. 后端把推荐结果返回给前端展示
 
-推荐文件夹目录：
+当前活动文件夹目录（2026-07-15 重构后）：
+
+```text
+xiangmu/
+├── README.md
+├── .env.example
+├── docs/
+│   ├── api.md
+│   ├── database.md
+│   ├── status.md
+│   └── test-plan.md
+├── frontend/
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── index.html
+│   └── src/
+│       ├── main.js
+│       ├── App.js
+│       ├── api/
+│       ├── components/
+│       ├── pages/
+│       ├── styles/
+│       └── utils/
+└── backend/
+    ├── requirements.txt
+    ├── requirements-dev.txt
+    ├── tests/
+    └── src/
+        ├── app.py
+        ├── server.py
+        ├── config/
+        ├── controllers/
+        ├── data/
+        ├── middlewares/
+        ├── models/
+        ├── repositories/
+        ├── routes/
+        ├── services/
+        └── utils/
+```
+
+下面是项目最初的概念目录规划。分层职责继续有效，但活动后端已经按基础技术方案选用 Python/FastAPI，因此文件扩展名和启动方式以上述实际目录为准。
 
 ```text
 xiangmu/
@@ -395,13 +456,14 @@ xiangmu/
 - `frontend/src/components/`：可复用组件，例如游戏卡片、导航栏、加载提示。
 - `frontend/src/api/`：统一管理前端请求后端接口的代码。
 - `frontend/src/pages/SettingsPage.js`：用户设置或更换自己的 AI API Key。
-- `frontend/src/api/steamApi.js`：封装 Steam 个人资料读取、校验和偏好摘要请求。
+- `frontend/src/api/recommendApi.js`：封装偏好、Steam 资料和推荐请求。
 - `backend/`：后端项目目录，负责接口、业务逻辑、数据处理和 AI API 调用。
 - `backend/src/routes/`：接口路由，只负责定义接口路径。
 - `backend/src/controllers/`：接收请求、调用服务、返回响应。
 - `backend/src/services/`：核心业务逻辑，例如 AI 推荐、游戏查询、prompt 生成。
-- `backend/src/services/keyService.js`：检查用户传入的 API Key 是否存在、格式是否合理，但不能保存真实 Key。
-- `backend/src/services/steamService.js`：读取 Steam 公开资料，并转换成推荐模块可使用的偏好摘要。
+- `backend/src/services/key_service.py`：检查用户传入的 API Key 是否存在、格式是否合理，但不能保存真实 Key。
+- `backend/src/services/steam_service.py`：读取 Steam 公开资料，并转换成推荐模块可使用的偏好摘要。
+- `backend/src/services/catalogue_service.py`：读取和解析 Steam 商店在线目录，负责分块分页、短期缓存及本地降级。
 - `backend/src/data/`：临时存放游戏数据、收藏数据和历史记录数据。
 - `backend/src/config/`：读取环境变量，例如 AI API Key。
 - `docs/`：项目文档，例如接口文档、数据结构说明、测试计划。
@@ -411,6 +473,7 @@ xiangmu/
 | 功能 | 请求方法 | 接口路径 | 说明 |
 | --- | --- | --- | --- |
 | 健康检查 | GET | `/api/health` | 检查后端是否启动 |
+| 首页在线游戏目录 | GET | `/api/catalogue/games` | 联网获取 Steam 游戏卡片，支持搜索、排序和分页加载 |
 | 游戏列表 | GET | `/api/games` | 获取游戏数据 |
 | 游戏详情 | GET | `/api/games/:id` | 获取单个游戏详情 |
 | Key 检查 | POST | `/api/key/check` | 检查用户 API Key 是否可用，不返回真实 Key |
@@ -436,21 +499,22 @@ xiangmu/
 
 ## API Key 使用规范
 
-本项目支持两种 API Key 使用方式：
+本项目支持两种 AI Provider 使用方式：
 
 - 默认 Key：项目方提供的默认 AI API Key，只能放在后端 `.env` 文件中。
-- 用户 Key：用户在设置页输入自己的 AI API Key，可以随时更换或清除。
+- 用户配置：用户在设置页输入自己的 AI API Key，并可覆盖 OpenAI 兼容接口地址和模型；可以随时更换或清除。
 
 推荐做法：
 
-1. 前端提供设置页，让用户输入自己的 API Key
-2. 前端只保存用户自己的 API Key，不保存项目默认 API Key
-3. 推荐请求时，前端通过请求头 `x-ai-api-key` 把用户 Key 传给后端
-4. 后端优先使用用户传来的 Key
+1. 前端设置页接收用户 API Key、OpenAI 兼容接口地址和模型
+2. 前端只在 `sessionStorage` 保存用户配置，不保存项目默认 API Key
+3. 推荐请求时，前端通过请求头 `x-ai-api-key` 传递用户 Key，接口地址和模型放在 JSON 请求体
+4. 后端按请求构造独立 Provider 配置，优先使用用户传来的 Key
 5. 如果用户没有填写 Key，后端才使用 `.env` 中的默认 Key
 6. 后端不能把 API Key 写入日志、数据库或接口返回值
 7. `.gitignore` 中必须忽略 `.env`
 8. GitHub 上只提交 `.env.example`
+9. 自定义接口或模型必须同时提供用户 Key，禁止把后端默认 Key 发往用户指定地址
 
 前端保存建议：
 
@@ -464,11 +528,22 @@ xiangmu/
 x-ai-api-key: user_api_key_here
 ```
 
+非敏感 Provider 字段示例：
+
+```json
+{
+  "apiBaseUrl": "https://api.example.com/v1",
+  "model": "provider-model"
+}
+```
+
 `.env.example` 示例：
 
 ```env
 DEFAULT_AI_API_KEY=your_default_api_key_here
 ALLOW_USER_API_KEY=true
+AI_API_BASE_URL=https://api.openai.com/v1/chat/completions
+AI_MODEL=gpt-4o-mini
 STEAM_API_KEY=your_steam_web_api_key_here
 ```
 

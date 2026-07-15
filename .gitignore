@@ -4,6 +4,10 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+node_modules/
 dist/
 build/
+.coverage
+htmlcov/
+output/
 
