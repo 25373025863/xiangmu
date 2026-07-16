@@ -1,5 +1,5 @@
 import { getHistories } from '../api/favoriteApi.js'
-import { GameCard } from '../components/GameCard.js'
+import { GameCard, hydrateGameCardCovers } from '../components/GameCard.js'
 import { escapeHtml, joinText } from '../utils/format.js'
 
 export function HistoryPage() {
@@ -24,6 +24,7 @@ export function HistoryPage() {
               return `<article class="history-record"><p class="history-time">${escapeHtml(new Date(record.created_at).toLocaleString('zh-CN'))}</p><h2>${escapeHtml(summary)}</h2><div class="game-grid">${(record.recommendations || []).map(game => GameCard(game)).join('')}</div></article>`
             }).join('')
           : '<div class="empty-state">还没有推荐历史，先生成一次推荐吧。</div>'
+        hydrateGameCardCovers(container)
       } catch (error) {
         container.innerHTML = `<div class="error-state">${error.message}</div>`
       }

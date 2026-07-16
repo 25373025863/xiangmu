@@ -1,4 +1,8 @@
+import tempfile
 import unittest
+from dataclasses import replace
+from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -12,9 +16,17 @@ class UnifiedApiTests(unittest.TestCase):
         cls.client = TestClient(app)
 
     def setUp(self) -> None:
-        data_dir = get_settings().data_dir
-        for filename in ("favorites.json", "histories.json"):
-            (data_dir / filename).write_text("[]\n", encoding="utf-8")
+        self._temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self._temporary_directory.cleanup)
+        data_dir = Path(self._temporary_directory.name)
+        settings = replace(get_settings(), data_dir=data_dir)
+        for service_module in (
+            "backend.src.services.favorite_service.get_settings",
+            "backend.src.services.history_service.get_settings",
+        ):
+            settings_patch = patch(service_module, return_value=settings)
+            settings_patch.start()
+            self.addCleanup(settings_patch.stop)
 
     def test_health_uses_standard_response(self) -> None:
         response = self.client.get("/api/health")
@@ -30,17 +42,22 @@ class UnifiedApiTests(unittest.TestCase):
         self.assertEqual(detail.json()["data"]["id"], game_id)
 
     def test_demo_recommendation_uses_canonical_games_and_records_history(self) -> None:
-        response = self.client.post(
-            "/api/recommend",
-            json={
-                "preferences": {"genres": ["动作"], "platforms": ["PC"]},
-                "limit": 3,
-            },
-        )
+        with patch(
+            "backend.src.services.recommend_service.catalogue_service.list_games",
+            return_value={"source": "local", "degraded": True, "items": []},
+        ):
+            response = self.client.post(
+                "/api/recommend",
+                json={
+                    "preferences": {"genres": ["动作"], "platforms": ["PC"]},
+                    "limit": 3,
+                },
+            )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertTrue(payload["success"])
-        self.assertLessEqual(len(payload["data"]), 3)
+        self.assertEqual(len(payload["data"]), 3)
+        self.assertEqual(payload["meta"]["returned_count"], 3)
         history = self.client.get("/api/histories")
         self.assertEqual(history.status_code, 200)
         self.assertEqual(history.json()["data"]["total"], 1)

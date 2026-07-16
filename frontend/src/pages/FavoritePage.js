@@ -1,4 +1,4 @@
-import { GameCard } from '../components/GameCard.js'
+import { GameCard, hydrateGameCardCovers } from '../components/GameCard.js'
 import { getFavorites, removeFavorite } from '../api/favoriteApi.js'
 
 export function FavoritePage() {
@@ -18,6 +18,7 @@ export function FavoritePage() {
           grid.innerHTML = items.length
             ? items.map(game => GameCard(game, { removeFavorite: true })).join('')
             : '<div class="empty-state">暂时没有收藏游戏。</div>'
+          hydrateGameCardCovers(grid)
         } catch (error) {
           grid.innerHTML = `<div class="error-state">${error.message}</div>`
         }

@@ -11,9 +11,14 @@ from backend.src.models.schemas import (
     RecommendResponse,
 )
 from backend.src.services.ai_service import call_ai_api
+from backend.src.services.catalogue_service import LOCAL_STEAM_APP_IDS, catalogue_service
 from backend.src.services.game_service import GameService
 from backend.src.services.key_service import choose_provider_config
 from backend.src.services.prompt_service import PROMPT_VERSION, build_recommend_prompt
+
+
+RECOMMENDATION_CATALOGUE_PAGE_SIZE = 25
+MAX_RECOMMENDATION_CANDIDATES = 35
 
 
 def generate_recommendations(
@@ -27,34 +32,219 @@ def generate_recommendations(
         api_base_url=request_data.api_base_url,
         model=request_data.model,
     )
-    candidate_games = request_data.candidate_games or load_default_games()
+    if request_data.candidate_games:
+        candidate_games = prepare_candidate_pool(
+            request_data.candidate_games,
+            request_data.preferences,
+        )
+    else:
+        candidate_games = load_recommendation_candidates(
+            request_data.preferences,
+            request_data.limit,
+        )
+    target_count = min(request_data.limit, len(candidate_games))
+
     if provider is None:
+        recommendations = build_demo_recommendations(
+            request_data.preferences,
+            candidate_games,
+            target_count,
+        )
         if not settings.demo_mode_without_key:
             raise ValueError("未提供用户 API Key，后端也没有配置默认 API Key。")
         return RecommendResponse(
-            data=build_demo_recommendations(
-                request_data.preferences, candidate_games, request_data.limit
+            data=recommendations,
+            meta=RecommendMeta(
+                source="local-demo",
+                demo_mode=True,
+                requested_count=request_data.limit,
+                returned_count=len(recommendations),
+                candidate_count=len(candidate_games),
             ),
-            meta=RecommendMeta(source="local-demo", demo_mode=True),
+        )
+
+    if target_count == 0:
+        return RecommendResponse(
+            data=[],
+            meta=RecommendMeta(
+                source=provider.source,
+                model=provider.model,
+                used_user_key=provider.used_user_key,
+                requested_count=request_data.limit,
+                returned_count=0,
+                candidate_count=0,
+            ),
         )
 
     prompt = build_recommend_prompt(
-        request_data.preferences, candidate_games, request_data.limit
+        request_data.preferences,
+        candidate_games,
+        target_count,
     )
     raw_content = call_ai_api(prompt, provider, settings.ai_timeout_seconds)
+    ai_recommendations = parse_ai_recommendations(raw_content, target_count)
+    recommendations = complete_ai_recommendations(
+        ai_recommendations,
+        request_data.preferences,
+        candidate_games,
+        target_count,
+    )
     return RecommendResponse(
-        data=parse_ai_recommendations(raw_content, request_data.limit),
+        data=recommendations,
         meta=RecommendMeta(
             source=provider.source,
             prompt_version=PROMPT_VERSION,
             model=provider.model,
             used_user_key=provider.used_user_key,
+            requested_count=request_data.limit,
+            returned_count=len(recommendations),
+            candidate_count=len(candidate_games),
         ),
     )
 
 
 def load_default_games() -> list[GameCandidate]:
-    return [GameCandidate(**game) for game in GameService().list_games()]
+    candidates: list[GameCandidate] = []
+    for game in GameService().list_games():
+        data = dict(game)
+        game_id = str(data.get("id", ""))
+        app_id = data.get("steam_app_id") or LOCAL_STEAM_APP_IDS.get(game_id)
+        data["steam_app_id"] = app_id
+        data["source"] = "local"
+        if app_id:
+            data.setdefault(
+                "cover_url",
+                f"https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/header.jpg",
+            )
+            data.setdefault(
+                "store_url",
+                f"https://store.steampowered.com/app/{app_id}/",
+            )
+        candidates.append(GameCandidate(**data))
+    return candidates
+
+
+def load_recommendation_candidates(
+    preferences: Any,
+    limit: int,
+) -> list[GameCandidate]:
+    local_candidates = load_default_games()
+    remote_candidates: list[GameCandidate] = []
+    first_page: dict[str, Any] | None = None
+
+    try:
+        first_page = catalogue_service.list_games(
+            page=1,
+            size=RECOMMENDATION_CATALOGUE_PAGE_SIZE,
+            sort="topsellers",
+        )
+        remote_candidates.extend(_catalogue_candidates(first_page))
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return prepare_candidate_pool(local_candidates, preferences)
+
+    prepared = prepare_candidate_pool(
+        [*local_candidates, *remote_candidates],
+        preferences,
+    )
+    variety_target = min(MAX_RECOMMENDATION_CANDIDATES, max(limit * 3, limit))
+    if (
+        first_page
+        and first_page.get("source") == "steam"
+        and not first_page.get("degraded")
+        and first_page.get("has_more")
+        and len(prepared) < variety_target
+    ):
+        try:
+            second_page = catalogue_service.list_games(
+                page=2,
+                size=RECOMMENDATION_CATALOGUE_PAGE_SIZE,
+                sort="topsellers",
+            )
+            remote_candidates.extend(_catalogue_candidates(second_page))
+            prepared = prepare_candidate_pool(
+                [*local_candidates, *remote_candidates],
+                preferences,
+            )
+        except (OSError, RuntimeError, TypeError, ValueError):
+            pass
+    return prepared
+
+
+def prepare_candidate_pool(
+    candidate_games: list[GameCandidate],
+    preferences: Any,
+) -> list[GameCandidate]:
+    steam_summary = _public_steam_library(preferences)
+    prepared: list[GameCandidate] = []
+    seen_app_ids: set[int] = set()
+    seen_titles: set[str] = set()
+
+    for game in candidate_games:
+        if _is_owned_steam_game(game, steam_summary):
+            continue
+        title_key = _normalised_title(game.title)
+        if not title_key:
+            continue
+        if game.steam_app_id is not None and game.steam_app_id in seen_app_ids:
+            continue
+        if title_key in seen_titles:
+            continue
+        if game.steam_app_id is not None:
+            seen_app_ids.add(game.steam_app_id)
+        seen_titles.add(title_key)
+        prepared.append(game)
+
+    return sorted(
+        prepared,
+        key=lambda game: _score_game(game, preferences, steam_summary),
+        reverse=True,
+    )[:MAX_RECOMMENDATION_CANDIDATES]
+
+
+def _catalogue_candidates(data: dict[str, Any]) -> list[GameCandidate]:
+    if data.get("source") != "steam" or data.get("degraded"):
+        return []
+    candidates: list[GameCandidate] = []
+    for item in data.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            app_id = int(item.get("steam_app_id") or 0)
+        except (TypeError, ValueError):
+            continue
+        title = str(item.get("title") or "").strip()
+        if app_id <= 0 or not title:
+            continue
+        review_score = item.get("review_score")
+        try:
+            score = float(review_score) / 10 if review_score is not None else None
+        except (TypeError, ValueError):
+            score = None
+        platforms = [
+            "PC" if str(platform).casefold() == "windows" else str(platform)
+            for platform in item.get("platforms") or []
+            if platform
+        ]
+        review_label = str(item.get("review_label") or "").strip()
+        release_date = str(item.get("release_date") or "").strip()
+        description_parts = [part for part in (review_label, release_date) if part]
+        candidates.append(
+            GameCandidate(
+                id=f"steam-{app_id}",
+                steam_app_id=app_id,
+                title=title,
+                platforms=platforms,
+                price=item.get("price"),
+                score=score,
+                description="；".join(description_parts),
+                cover_url=str(item.get("cover_url") or ""),
+                store_url=f"https://store.steampowered.com/app/{app_id}/",
+                release_date=release_date,
+                review_label=review_label,
+                source="steam",
+            )
+        )
+    return candidates
 
 
 def parse_ai_recommendations(raw_content: str, limit: int) -> list[RecommendationItem]:
@@ -66,10 +256,67 @@ def parse_ai_recommendations(raw_content: str, limit: int) -> list[Recommendatio
     recommendations = parsed if isinstance(parsed, list) else parsed.get("recommendations") or parsed.get("data") or []
     if not isinstance(recommendations, list):
         raise ValueError("AI 返回 JSON 中缺少 recommendations 数组。")
-    items = [_normalize_recommendation(item) for item in recommendations[:limit] if isinstance(item, dict)]
+    items: list[RecommendationItem] = []
+    for item in recommendations:
+        if not isinstance(item, dict):
+            continue
+        title = item.get("title") or item.get("name")
+        if not isinstance(title, str) or not title.strip():
+            continue
+        items.append(_normalize_recommendation(item))
+        if len(items) == limit:
+            break
     if not items:
         raise ValueError("AI 没有返回可用的推荐结果。")
     return items
+
+
+def complete_ai_recommendations(
+    ai_items: list[RecommendationItem],
+    preferences: Any,
+    candidate_games: list[GameCandidate],
+    target_count: int,
+) -> list[RecommendationItem]:
+    completed: list[RecommendationItem] = []
+    seen: set[str] = set()
+
+    for item in ai_items:
+        candidate = _find_candidate(item, candidate_games)
+        if candidate is None:
+            continue
+        identity = _recommendation_identity(candidate)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        completed.append(_enrich_recommendation(item, candidate))
+        if len(completed) == target_count:
+            return completed
+
+    fallback_items = build_demo_recommendations(
+        preferences,
+        candidate_games,
+        target_count,
+    )
+    for item in fallback_items:
+        candidate = _find_candidate(item, candidate_games)
+        if candidate is None:
+            continue
+        identity = _recommendation_identity(candidate)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        completed.append(
+            item.model_copy(
+                update={
+                    "possible_drawbacks": (
+                        "该条目由候选排序自动补足，部分次要偏好请在商店页面进一步确认。"
+                    )
+                }
+            )
+        )
+        if len(completed) == target_count:
+            break
+    return completed
 
 
 def build_demo_recommendations(
@@ -97,6 +344,11 @@ def build_demo_recommendations(
             possible_drawbacks="当前为无 API Key 的本地演示结果。",
             similar_games=[item.title for item in available_games if item.title != game.title][:3],
             match_score=min(100, max(60, _score_game(game, preferences, steam_summary))),
+            steam_app_id=game.steam_app_id,
+            price=game.price,
+            cover_url=game.cover_url,
+            store_url=game.store_url,
+            source=game.source or "local",
         )
         for game in chosen_games
     ]
@@ -105,7 +357,8 @@ def build_demo_recommendations(
 def _normalize_recommendation(item: dict) -> RecommendationItem:
     return RecommendationItem(
         game_id=item.get("game_id") or item.get("id"),
-        title=str(item.get("title") or item.get("name") or "未命名游戏"),
+        steam_app_id=item.get("steam_app_id") or item.get("app_id"),
+        title=str(item.get("title") or item.get("name")),
         reason=str(item.get("reason") or item.get("recommend_reason") or "符合用户偏好。"),
         suitable_for=str(item.get("suitable_for") or item.get("player_type") or "目标玩家"),
         platforms=_to_string_list(item.get("platforms")),
@@ -113,6 +366,61 @@ def _normalize_recommendation(item: dict) -> RecommendationItem:
         possible_drawbacks=str(item.get("possible_drawbacks") or item.get("drawbacks") or ""),
         similar_games=_to_string_list(item.get("similar_games")),
         match_score=_to_score(item.get("match_score") or item.get("score")),
+        price=item.get("price"),
+        cover_url=str(item.get("cover_url") or ""),
+        store_url=str(item.get("store_url") or ""),
+        source=str(item.get("source") or ""),
+    )
+
+
+def _find_candidate(
+    item: RecommendationItem,
+    candidate_games: list[GameCandidate],
+) -> GameCandidate | None:
+    item_id = str(item.game_id).strip().casefold() if item.game_id is not None else ""
+    title = _normalised_title(item.title)
+    for candidate in candidate_games:
+        candidate_id = (
+            str(candidate.id).strip().casefold() if candidate.id is not None else ""
+        )
+        if item_id and candidate_id == item_id:
+            return candidate
+        if item.steam_app_id and candidate.steam_app_id == item.steam_app_id:
+            return candidate
+    if title:
+        return next(
+            (
+                candidate
+                for candidate in candidate_games
+                if _normalised_title(candidate.title) == title
+            ),
+            None,
+        )
+    return None
+
+
+def _recommendation_identity(candidate: GameCandidate) -> str:
+    if candidate.steam_app_id is not None:
+        return f"steam:{candidate.steam_app_id}"
+    return f"title:{_normalised_title(candidate.title)}"
+
+
+def _enrich_recommendation(
+    item: RecommendationItem,
+    candidate: GameCandidate,
+) -> RecommendationItem:
+    return item.model_copy(
+        update={
+            "game_id": candidate.id,
+            "steam_app_id": candidate.steam_app_id,
+            "title": candidate.title,
+            "platforms": item.platforms or candidate.platforms,
+            "tags": item.tags or list(dict.fromkeys([*candidate.genres, *candidate.tags])),
+            "price": candidate.price,
+            "cover_url": candidate.cover_url,
+            "store_url": candidate.store_url,
+            "source": candidate.source or "local",
+        }
     )
 
 

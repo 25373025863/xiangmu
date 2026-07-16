@@ -24,6 +24,7 @@ class Member4ServiceTests(unittest.TestCase):
         )
         self.assertIn("用户偏好 JSON", prompt)
         self.assertIn("recommendations", prompt)
+        self.assertIn("必须推荐恰好 3 个", prompt)
 
     def test_parse_ai_recommendations(self):
         raw = """```json

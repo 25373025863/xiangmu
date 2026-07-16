@@ -30,12 +30,20 @@ def build_recommend_prompt(
     return "\n".join(
         [
             "请根据以下用户偏好和候选游戏生成推荐结果。",
-            f"最多推荐 {limit} 个游戏，优先选择候选游戏中真实存在的条目。",
+            f"必须推荐恰好 {limit} 个互不重复的游戏，并按匹配程度从高到低排列。",
+            "只能选择候选游戏中真实存在的条目，不得虚构游戏。",
+            "不要因为某个次要偏好不匹配就减少数量；请在 possible_drawbacks 中说明差异。",
             "用户偏好 JSON：",
             json.dumps(preferences.model_dump(exclude_none=True), ensure_ascii=False),
             "候选游戏 JSON：",
             json.dumps(
-                [game.model_dump(exclude_none=True) for game in candidate_games],
+                [
+                    game.model_dump(
+                        exclude_none=True,
+                        exclude={"cover_url", "store_url"},
+                    )
+                    for game in candidate_games
+                ],
                 ensure_ascii=False,
             ),
             "返回 JSON 格式：",

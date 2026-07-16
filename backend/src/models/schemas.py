@@ -16,6 +16,11 @@ class GameCandidate(BaseModel):
     price: str | float | int | None = None
     score: float | None = None
     description: str = ""
+    cover_url: str = ""
+    store_url: str = ""
+    release_date: str = ""
+    review_label: str = ""
+    source: str = ""
 
 
 class PreferenceInput(BaseModel):
@@ -69,6 +74,7 @@ class RecommendRequest(BaseModel):
 
 class RecommendationItem(BaseModel):
     game_id: str | int | None = None
+    steam_app_id: int | None = None
     title: str
     reason: str
     suitable_for: str
@@ -77,6 +83,10 @@ class RecommendationItem(BaseModel):
     possible_drawbacks: str = ""
     similar_games: list[str] = Field(default_factory=list)
     match_score: float = Field(default=0, ge=0, le=100)
+    price: str | float | int | None = None
+    cover_url: str = ""
+    store_url: str = ""
+    source: str = ""
 
 
 class RecommendMeta(BaseModel):
@@ -85,6 +95,9 @@ class RecommendMeta(BaseModel):
     model: str | None = None
     used_user_key: bool = False
     demo_mode: bool = False
+    requested_count: int = 0
+    returned_count: int = 0
+    candidate_count: int = 0
 
 
 class RecommendResponse(BaseModel):

@@ -2,12 +2,11 @@ from typing import Literal
 
 from fastapi import APIRouter, Query
 
-from backend.src.services.catalogue_service import CatalogueService
+from backend.src.services.catalogue_service import catalogue_service
 from backend.src.utils.response import success
 
 
 router = APIRouter(prefix="/api/catalogue", tags=["catalogue"])
-catalogue_service = CatalogueService()
 
 
 @router.get("/games")

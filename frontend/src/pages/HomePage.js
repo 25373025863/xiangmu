@@ -1,6 +1,7 @@
 import { getCatalogueGames } from '../api/catalogueApi.js'
 import { checkConfig } from '../api/keyApi.js'
 import { escapeHtml } from '../utils/format.js'
+import { isSteamSource, safeWebUrl, steamStoreUrl } from '../utils/gameLinks.js'
 
 const PAGE_SIZE = 12
 
@@ -11,40 +12,15 @@ const heroGames = [
   ['文明 VI', 'https://cdn.akamai.steamstatic.com/steam/apps/289070/library_hero.jpg']
 ]
 
-function safeWebUrl(value) {
-  if (!value) return ''
-  try {
-    const url = new URL(String(value), window.location.origin)
-    return ['http:', 'https:'].includes(url.protocol) ? url.href : ''
-  } catch {
-    return ''
-  }
-}
-
-function steamStoreUrl(value, title) {
-  const candidate = safeWebUrl(value)
-  if (candidate) {
-    const hostname = new URL(candidate).hostname.toLowerCase()
-    if (hostname === 'store.steampowered.com' || hostname.endsWith('.store.steampowered.com')) {
-      return candidate
-    }
-  }
-  return `https://store.steampowered.com/search/?term=${encodeURIComponent(title)}`
-}
-
 function asList(value) {
   if (Array.isArray(value)) return value.filter(Boolean).map(String)
   return value ? [String(value)] : []
 }
 
-function isSteamSource(source) {
-  return String(source || '').toLowerCase().includes('steam')
-}
-
 function catalogueCard(game, catalogueSource) {
   const title = String(game.title || '未命名游戏')
   const coverUrl = safeWebUrl(game.cover_url)
-  const storeUrl = steamStoreUrl(game.store_url, title)
+  const storeUrl = steamStoreUrl(game.store_url, title, game.steam_app_id)
   const platforms = asList(game.platforms).slice(0, 3)
   const hasScore = game.review_score !== null && game.review_score !== undefined && Number.isFinite(Number(game.review_score))
   const score = hasScore ? Math.max(0, Math.min(100, Math.round(Number(game.review_score)))) : null

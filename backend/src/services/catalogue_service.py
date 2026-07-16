@@ -623,3 +623,7 @@ def _release_sort_key(value: str) -> datetime:
         except ValueError:
             pass
     return datetime.min
+
+
+# The catalogue page and recommendation flow reuse one five-minute cache.
+catalogue_service = CatalogueService()

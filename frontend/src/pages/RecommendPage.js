@@ -1,6 +1,6 @@
 import { addFavorite } from '../api/favoriteApi.js'
 import { getRecommendations } from '../api/recommendApi.js'
-import { GameCard } from '../components/GameCard.js'
+import { GameCard, hydrateGameCardCovers } from '../components/GameCard.js'
 import { readProviderConfig } from '../utils/providerConfig.js'
 
 export function RecommendPage() {
@@ -20,6 +20,7 @@ export function RecommendPage() {
         grid.innerHTML = result.data.length
           ? result.data.map(game => GameCard(game, { favoriteAction: true })).join('')
           : '<div class="empty-state">当前没有推荐结果，请先完善偏好。</div>'
+        hydrateGameCardCovers(grid)
         grid.addEventListener('click', async event => {
           const button = event.target.closest('[data-favorite-game]')
           if (!button) return
